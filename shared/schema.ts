@@ -28,6 +28,18 @@ export const serverConfig = pgTable("server_config", {
   uptime: text("uptime").notNull(),
 });
 
+export const providers = pgTable("providers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  borough: text("borough"),
+  specialty: text("specialty"),
+  lang: text("lang"),
+  address: text("address"),
+  phone: text("phone"),
+  email: text("email"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -42,6 +54,11 @@ export const insertServerConfigSchema = createInsertSchema(serverConfig).omit({
   id: true,
 });
 
+export const insertProviderSchema = createInsertSchema(providers).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
@@ -50,6 +67,9 @@ export type ServerLog = typeof serverLogs.$inferSelect;
 
 export type InsertServerConfig = z.infer<typeof insertServerConfigSchema>;
 export type ServerConfig = typeof serverConfig.$inferSelect;
+
+export type InsertProvider = z.infer<typeof insertProviderSchema>;
+export type Provider = typeof providers.$inferSelect;
 
 // API Response Types
 export const serverStatusResponseSchema = z.object({

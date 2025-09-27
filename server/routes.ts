@@ -6,6 +6,9 @@ import { storage } from "./storage";
 import { insertServerLogSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { config, isDevelopment } from "./config";
+import { getDatabase } from "./db";
+import { providers } from "@shared/schema";
+import { and, eq, like } from "drizzle-orm";
 
 // Async error wrapper utility
 const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
@@ -139,6 +142,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const apiRouter = Router();
   const serverRouter = Router();
   const healthRouter = Router();
+  const providersRouter = Router();
 
   // Server Management Routes
   serverRouter.get("/config", asyncHandler(async (req: Request, res: Response) => {
@@ -225,9 +229,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Providers Routes
+  providersRouter.get("/", asyncHandler(async (req: Request, res: Response) => {
+    const { borough, specialty, lang } = req.query;
+    
+    try {
+      // Try database first, then fallback to empty results for hybrid storage
+      const db = getDatabase();
+      
+      // Normalize query parameters to strings (handle arrays)
+      const normalizedBorough = Array.isArray(borough) ? borough[0] : borough;
+      const normalizedSpecialty = Array.isArray(specialty) ? specialty[0] : specialty;
+      const normalizedLang = Array.isArray(lang) ? lang[0] : lang;
+      
+      // Build filter conditions
+      const conditions = [];
+      if (normalizedBorough && typeof normalizedBorough === 'string') {
+        conditions.push(eq(providers.borough, normalizedBorough));
+      }
+      if (normalizedSpecialty && typeof normalizedSpecialty === 'string') {
+        conditions.push(eq(providers.specialty, normalizedSpecialty));
+      }
+      if (normalizedLang && typeof normalizedLang === 'string') {
+        conditions.push(eq(providers.lang, normalizedLang));
+      }
+      
+      // Execute query with or without filters
+      const results = conditions.length > 0
+        ? await db.select().from(providers).where(and(...conditions))
+        : await db.select().from(providers);
+      
+      res.json({
+        success: true,
+        data: results
+      });
+    } catch (error) {
+      // If database fails, return empty results with message
+      console.warn("Providers query failed, returning empty results:", error);
+      res.json({
+        success: true,
+        data: [],
+        message: "Database unavailable - showing empty results"
+      });
+    }
+  }));
+
   // Mount routers
   apiRouter.use("/server", serverRouter);
   apiRouter.use("/health", healthRouter);
+  apiRouter.use("/providers", providersRouter);
   app.use("/api", apiRouter);
   app.use("/health", healthRouter); // Also mount health directly for k8s compatibility
 
