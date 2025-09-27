@@ -10,6 +10,7 @@ class HealthcareVoiceAssistant {
         this.audioChunks = [];
         this.audioQueue = [];
         this.isPlayingAudio = false;
+        this.openaiReady = false;
         
         // UI Elements
         this.startBtn = document.getElementById('startBtn');
@@ -90,33 +91,36 @@ class HealthcareVoiceAssistant {
             const wsUrl = `${protocol}//${window.location.host}/realtime`;
             
             this.ws = new WebSocket(wsUrl);
+            this.openaiReady = false; // Track OpenAI connection state
             
             this.ws.onopen = () => {
-                console.log('WebSocket connected');
-                resolve();
+                console.log('WebSocket connected, waiting for OpenAI ready...');
+                // Don't resolve yet - wait for connection.ready message
             };
             
             this.ws.onmessage = (event) => {
-                this.handleWebSocketMessage(event);
+                this.handleWebSocketMessage(event, resolve);
             };
             
             this.ws.onclose = (event) => {
                 console.log('WebSocket disconnected:', event.code, event.reason);
+                this.openaiReady = false;
                 this.handleDisconnection();
             };
             
             this.ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
+                this.openaiReady = false;
                 reject(new Error('WebSocket connection failed'));
             };
             
-            // Timeout after 10 seconds
+            // Timeout after 15 seconds
             setTimeout(() => {
-                if (this.ws.readyState !== WebSocket.OPEN) {
+                if (this.ws.readyState !== WebSocket.OPEN || !this.openaiReady) {
                     this.ws.close();
-                    reject(new Error('Connection timeout'));
+                    reject(new Error('OpenAI connection timeout'));
                 }
-            }, 10000);
+            }, 15000);
         });
     }
     
@@ -218,7 +222,7 @@ class HealthcareVoiceAssistant {
         return resampled;
     }
     
-    handleWebSocketMessage(event) {
+    handleWebSocketMessage(event, connectResolve = null) {
         try {
             // All OpenAI Realtime messages are JSON, not binary
             const message = JSON.parse(event.data);
@@ -227,7 +231,13 @@ class HealthcareVoiceAssistant {
             switch (message.type) {
                 case 'connection.ready':
                     this.connectionId = message.connection_id;
+                    this.openaiReady = true;
+                    console.log('OpenAI connection ready!');
                     this.sendSessionUpdate();
+                    // Resolve connection promise if we're still connecting
+                    if (connectResolve) {
+                        connectResolve();
+                    }
                     break;
                     
                 case 'conversation.item.input_audio_transcription.completed':
