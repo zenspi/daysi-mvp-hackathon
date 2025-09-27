@@ -8,6 +8,7 @@ import { ZodError } from "zod";
 import { config, isDevelopment } from "./config";
 import { createClient } from "@supabase/supabase-js";
 import { sql, and, ilike, arrayContains, asc, desc } from "drizzle-orm";
+import OpenAI from "openai";
 
 // Async error wrapper utility
 const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
@@ -25,6 +26,15 @@ const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: numbe
     Math.sin(dLng / 2) * Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c; // Distance in miles
+};
+
+// OpenAI client setup - initialized when API key is available
+// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+const getOpenAIClient = () => {
+  if (!process.env.OPENAI_API_KEY) {
+    return null;
+  }
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 };
 
 // Custom error class for application errors
@@ -158,6 +168,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const usersRouter = Router();
   const resourcesRouter = Router();
   const adminRouter = Router();
+  const aiRouter = Router();
 
   // Server Management Routes
   serverRouter.get("/config", asyncHandler(async (req: Request, res: Response) => {
@@ -491,6 +502,187 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }));
 
+  // AI-Powered Healthcare Routes
+  aiRouter.post("/recommend-providers", asyncHandler(async (req: Request, res: Response) => {
+    console.log('[AI] Provider recommendation requested:', req.body);
+    
+    try {
+      const { symptoms, condition, location, language = 'English' } = req.body;
+      
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).json({ success: false, error: 'AI features not configured' });
+      }
+
+      if (!symptoms && !condition) {
+        return res.status(400).json({ success: false, error: 'Symptoms or condition required' });
+      }
+      
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+      
+      if (!url || !key) {
+        return res.status(502).json({ success: false, error: 'Database configuration missing' });
+      }
+      
+      const supabase = createClient(url, key, { auth: { persistSession: false } });
+      
+      // Get all providers for AI analysis
+      let query = supabase.from('providers').select('*');
+      if (location) {
+        query = query.ilike('borough', location);
+      }
+      const { data: providers } = await query.limit(20);
+      
+      if (!providers || providers.length === 0) {
+        return res.json({ success: true, recommendations: [], guidance: 'No providers found in your area.' });
+      }
+      
+      // AI-powered provider matching
+      const analysisPrompt = `You are a healthcare navigation AI. Based on the following symptoms/condition and available providers, recommend the top 3 most suitable healthcare providers and provide guidance.
+
+Symptoms/Condition: ${symptoms || condition}
+User Location: ${location || 'Not specified'}
+User Language: ${language}
+
+Available Providers:
+${providers.map(p => `- ${p.name} (${p.practice_name || 'N/A'}): ${p.specialty}, Languages: ${p.languages?.join(', ')}, Phone: ${p.phone}, Borough: ${p.borough}`).join('\n')}
+
+Please respond with JSON in this format:
+{
+  "recommended_provider_ids": [array of top 3 provider IDs as numbers],
+  "urgency_level": "low|medium|high|emergency",
+  "guidance": "Helpful guidance about the condition and when to seek care",
+  "specialties_to_consider": ["array of relevant medical specialties"],
+  "next_steps": "Specific actionable next steps for the user"
+}`;
+
+      const openai = getOpenAIClient();
+      if (!openai) {
+        return res.status(500).json({ success: false, error: 'AI features not configured - OPENAI_API_KEY required' });
+      }
+
+      const aiResponse = await openai.chat.completions.create({
+        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        messages: [{ role: "user", content: analysisPrompt }],
+        response_format: { type: "json_object" }
+      });
+
+      const analysis = JSON.parse(aiResponse.choices[0].message.content);
+      
+      // Get recommended providers with details
+      const recommendedProviders = providers.filter(p => 
+        analysis.recommended_provider_ids?.includes(p.id)
+      );
+      
+      console.log(`[AI] Recommended ${recommendedProviders.length} providers with ${analysis.urgency_level} urgency`);
+      
+      res.json({
+        success: true,
+        recommendations: recommendedProviders,
+        analysis: {
+          urgency_level: analysis.urgency_level,
+          guidance: analysis.guidance,
+          specialties_to_consider: analysis.specialties_to_consider,
+          next_steps: analysis.next_steps
+        }
+      });
+      
+    } catch (e: any) {
+      console.error('[AI] Provider recommendation error:', e?.message);
+      res.status(500).json({ success: false, error: e?.message || 'AI recommendation failed' });
+    }
+  }));
+
+  aiRouter.post("/recommend-resources", asyncHandler(async (req: Request, res: Response) => {
+    console.log('[AI] Resource recommendation requested:', req.body);
+    
+    try {
+      const { need, situation, location, language = 'English' } = req.body;
+      
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).json({ success: false, error: 'AI features not configured' });
+      }
+
+      if (!need && !situation) {
+        return res.status(400).json({ success: false, error: 'Need or situation description required' });
+      }
+      
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+      
+      if (!url || !key) {
+        return res.status(502).json({ success: false, error: 'Database configuration missing' });
+      }
+      
+      const supabase = createClient(url, key, { auth: { persistSession: false } });
+      
+      // Get all resources for AI analysis
+      let query = supabase.from('resources').select('*');
+      if (location) {
+        query = query.ilike('borough', location);
+      }
+      const { data: resources } = await query.limit(20);
+      
+      if (!resources || resources.length === 0) {
+        return res.json({ success: true, recommendations: [], guidance: 'No resources found in your area.' });
+      }
+      
+      // AI-powered resource matching
+      const analysisPrompt = `You are a social services navigation AI. Based on the user's needs and available resources, recommend the top 3 most helpful resources and provide guidance.
+
+User Need/Situation: ${need || situation}
+User Location: ${location || 'Not specified'}
+User Language: ${language}
+
+Available Resources:
+${resources.map(r => `- ${r.name}: ${r.category}, Languages: ${r.languages?.join(', ')}, Phone: ${r.phone}, Borough: ${r.borough}, Address: ${r.address}`).join('\n')}
+
+Please respond with JSON in this format:
+{
+  "recommended_resource_ids": [array of top 3 resource IDs as numbers],
+  "priority_level": "low|medium|high|urgent",
+  "guidance": "Helpful guidance about accessing these resources",
+  "additional_categories": ["array of other resource categories that might help"],
+  "next_steps": "Specific actionable next steps for the user"
+}`;
+
+      const openai = getOpenAIClient();
+      if (!openai) {
+        return res.status(500).json({ success: false, error: 'AI features not configured - OPENAI_API_KEY required' });
+      }
+
+      const aiResponse = await openai.chat.completions.create({
+        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        messages: [{ role: "user", content: analysisPrompt }],
+        response_format: { type: "json_object" }
+      });
+
+      const analysis = JSON.parse(aiResponse.choices[0].message.content);
+      
+      // Get recommended resources with details
+      const recommendedResources = resources.filter(r => 
+        analysis.recommended_resource_ids?.includes(r.id)
+      );
+      
+      console.log(`[AI] Recommended ${recommendedResources.length} resources with ${analysis.priority_level} priority`);
+      
+      res.json({
+        success: true,
+        recommendations: recommendedResources,
+        analysis: {
+          priority_level: analysis.priority_level,
+          guidance: analysis.guidance,
+          additional_categories: analysis.additional_categories,
+          next_steps: analysis.next_steps
+        }
+      });
+      
+    } catch (e: any) {
+      console.error('[AI] Resource recommendation error:', e?.message);
+      res.status(500).json({ success: false, error: e?.message || 'AI resource recommendation failed' });
+    }
+  }));
+
   // Mount routers
   apiRouter.use("/server", serverRouter);
   apiRouter.use("/health", healthRouter);
@@ -498,6 +690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   apiRouter.use("/providers", providersRouter);
   apiRouter.use("/resources", resourcesRouter);
   apiRouter.use("/admin", adminRouter);
+  apiRouter.use("/ai", aiRouter);
   app.use("/api", apiRouter);
   app.use("/health", healthRouter); // Also mount health directly for k8s compatibility
 

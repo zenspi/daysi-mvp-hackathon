@@ -1,6 +1,6 @@
 # Overview
 
-This is a full-stack web application called "Daysi MVP" that provides a dashboard for monitoring Express.js server operations. The application features a React frontend with a modern UI built using shadcn/ui components and a Node.js/Express backend with PostgreSQL database integration via Drizzle ORM. The system allows users to monitor server status, view API logs, manage configurations, and access quick administrative actions through an intuitive dashboard interface.
+This is a comprehensive hackathon-ready healthcare provider discovery platform that combines traditional search capabilities with AI-powered recommendations. The application features a React frontend with shadcn/ui components and a Node.js/Express backend with direct Supabase integration. The system enables users to find healthcare providers and social service resources through intelligent filtering, distance-based sorting, and AI-driven recommendations using OpenAI GPT-5.
 
 # User Preferences
 
@@ -19,17 +19,18 @@ Preferred communication style: Simple, everyday language.
 ## Backend Architecture
 - **Runtime**: Node.js with Express.js framework
 - **Language**: TypeScript with ES modules
-- **API Design**: RESTful API with JSON responses
-- **Middleware**: CORS enabled for all origins, JSON body parsing, request logging
-- **Error Handling**: Centralized error handling middleware with proper HTTP status codes
-- **Development**: Hot reload with Vite integration in development mode
+- **API Design**: RESTful API with comprehensive healthcare and AI endpoints
+- **AI Integration**: OpenAI GPT-5 for intelligent provider and resource recommendations
+- **Location Services**: Haversine formula for distance-based sorting
+- **Middleware**: CORS enabled, JSON parsing, request logging, error handling
+- **Response Format**: Consistent `{ success: boolean, data/error: any }` structure
 
 ## Data Storage Solutions
-- **Database**: PostgreSQL via Neon serverless database
-- **ORM**: Drizzle ORM for type-safe database operations
-- **Schema Management**: Drizzle Kit for migrations and schema management
-- **Fallback Storage**: In-memory storage implementation for development/testing
-- **Data Models**: Users, server logs, and server configuration tables
+- **Primary Database**: PostgreSQL via Supabase with direct client integration
+- **Schema Design**: UUID primary keys, comprehensive healthcare data models
+- **Tables**: Users (with location consent), Providers (with specialties/languages), Resources (social services)
+- **Fallback Storage**: In-memory storage for server monitoring when database connection fails
+- **Data Quality**: Verified providers and resources with source tracking
 
 ## Authentication and Authorization
 - **Session Management**: Session-based authentication using connect-pg-simple for PostgreSQL session storage
@@ -45,17 +46,20 @@ Preferred communication style: Simple, everyday language.
 
 ## Key Architectural Decisions
 
-### Monorepo Structure
-The application uses a monorepo approach with shared schemas between frontend and backend, promoting type safety and code reuse. The `shared/` directory contains database schemas and type definitions accessible to both client and server.
+### Hackathon-Optimized Design
+Built specifically for hackathon environments with rapid deployment, comprehensive features out-of-the-box, and graceful fallbacks when services are unavailable. All core functionality works immediately after setup.
 
-### Component-Based UI
-The frontend leverages a comprehensive component library (shadcn/ui) built on Radix UI primitives, ensuring accessibility and consistency across the application. Components are highly customizable through Tailwind CSS and CSS variables.
+### Direct Supabase Integration
+Migrated from traditional ORM to direct Supabase client integration for better reliability and real-time capabilities. This provides instant database connectivity and built-in authentication features.
 
-### Type-Safe Database Operations
-Drizzle ORM provides compile-time type safety for database operations, with schema validation using Zod for runtime type checking of API requests and responses.
+### AI-First Healthcare Features
+Integrated OpenAI GPT-5 for intelligent provider recommendations based on symptoms, resource matching based on needs, urgency assessment, and personalized guidance - making the platform uniquely valuable.
 
-### Development Experience
-The setup includes hot reload, error overlays, and development-specific tooling through Replit plugins, optimizing the developer experience while maintaining production readiness.
+### Location-Centric Architecture
+Implements GPS-based distance sorting with Haversine formula calculations, location consent workflows, and fallback to borough/zip data when coordinates aren't available.
 
-### Scalable Storage Strategy
-The application implements an interface-based storage pattern with both PostgreSQL and in-memory implementations, allowing for easy testing and development while maintaining production database capabilities.
+### Production-Ready API Design
+Comprehensive RESTful API covering user management, provider/resource search, AI recommendations, and admin analytics with proper error handling, rate limiting, and response formatting.
+
+### Hybrid Storage Strategy
+Core features use Supabase for reliable data persistence while server monitoring falls back to in-memory storage, ensuring the application remains functional even during database connectivity issues.
