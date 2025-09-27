@@ -1,0 +1,113 @@
+You are my engineer.  
+Update this project so it is fully aligned, connected to Supabase, and hackathon-ready.  
+
+---
+
+### 1. Supabase Database Setup
+Check these tables. If they don’t exist, create them. If missing columns, add them.
+
+**users**  
+- id (uuid, primary key)  
+- email (text, unique)  
+- phone (text, unique)  
+- name (text)  
+- language (text)  
+- borough (text)  
+- zip (text)  
+- latitude (numeric, optional)  
+- longitude (numeric, optional)  
+- role (enum: 'user', 'provider', 'admin')  
+- created_at (timestamp default now())  
+
+**providers**  
+- id (uuid, primary key)  
+- name (text) → individual provider name  
+- practice_name (text) → optional, clinic/business name  
+- specialty (text)  
+- borough (text)  
+- zip (text)  
+- phone (text)  
+- website (text)  
+- languages (text[], array)  
+- insurance (text[], array)  
+- latitude (numeric)  
+- longitude (numeric)  
+- verified (boolean, default false)  
+- created_at (timestamp default now())  
+
+**resources**  
+- id (uuid, primary key)  
+- name (text)  
+- category (text)  
+- address (text)  
+- borough (text)  
+- zip (text)  
+- phone (text)  
+- website (text)  
+- languages (text[], array)  
+- latitude (numeric)  
+- longitude (numeric)  
+- source (text)  
+- verified (boolean, default false)  
+- created_at (timestamp default now())  
+
+---
+
+### 2. Express API Routes
+
+- **Health**  
+  - `GET /health` → return `{ ok: true }` if server + Supabase connected.  
+
+- **Users**  
+  - `POST /api/users`  
+    - Accepts `{ email, phone, name, language, borough, zip, latitude, longitude }`.  
+    - If user exists (phone/email), return existing.  
+    - If new, create record.  
+    - Supports optional `lat/lng` if user consents.  
+    - Response: `{ success: true, user: { ... } }`  
+  - `GET /api/users/:id` → return a user profile.  
+
+- **Providers**  
+  - `GET /api/providers` with filters:  
+    - `borough` (exact ilike)  
+    - `specialty` (partial ilike)  
+    - `lang` (languages array contains)  
+    - `lat` + `lng` (return providers sorted by nearest distance)  
+  - Response: `{ success: true, data: [...] }`  
+
+- **Resources**  
+  - `GET /api/resources` with filters:  
+    - `borough` (exact ilike)  
+    - `category` (partial ilike)  
+    - `lang` (languages array contains)  
+    - `lat` + `lng` (return resources sorted by nearest distance)  
+  - Response: `{ success: true, data: [...] }`  
+
+- **Admin**  
+  - `GET /api/admin/overview` → return counts of users, providers, resources.  
+
+---
+
+### 3. Location Consent Flow
+- Users may provide `lat/lng` directly (e.g., from browser geolocation API or phone).  
+- If they decline, fallback to `zip` or `borough`.  
+- Store whatever they provide in the **users table**.  
+- When `lat/lng` provided in query, `/api/providers` and `/api/resources` should sort by nearest distance.  
+
+---
+
+### 4. Validation & Responses
+- Ensure all endpoints use Supabase, not mock data.  
+- Use env vars in deploy: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `OPENAI_API_KEY`.  
+- On error, return `{ success: false, error: "..." }`.  
+- Confirm JSON is valid.  
+
+---
+
+### 5. Deliverables
+After this update I should be able to verify:  
+- `GET /health` → `{ ok: true }`  
+- `POST /api/users` → creates/fetches user, with optional lat/lng stored.  
+- `GET /api/providers` → seeded providers returned, filters + distance sort work.  
+- `GET /api/resources` → seeded resources returned, filters + distance sort work.  
+- `GET /api/admin/overview` → returns counts.  

@@ -3,14 +3,28 @@ import { createServer, type Server } from "http";
 import { Router } from "express";
 import cors from "cors";
 import { storage } from "./storage";
-import { insertServerLogSchema } from "@shared/schema";
+import { insertServerLogSchema, insertUserSchema, users, providers, resources } from "@shared/schema";
 import { ZodError } from "zod";
 import { config, isDevelopment } from "./config";
 import { createClient } from "@supabase/supabase-js";
+import { sql, and, ilike, arrayContains, asc, desc } from "drizzle-orm";
 
 // Async error wrapper utility
 const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
   Promise.resolve(fn(req, res, next)).catch(next);
+};
+
+// Distance calculation utility (Haversine formula)
+const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const R = 3959; // Earth's radius in miles
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLng = (lng2 - lng1) * (Math.PI / 180);
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in miles
 };
 
 // Custom error class for application errors
@@ -141,6 +155,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const serverRouter = Router();
   const healthRouter = Router();
   const providersRouter = Router();
+  const usersRouter = Router();
+  const resourcesRouter = Router();
+  const adminRouter = Router();
 
   // Server Management Routes
   serverRouter.get("/config", asyncHandler(async (req: Request, res: Response) => {
@@ -193,19 +210,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // In a real application, you might implement graceful restart logic here
   }));
 
-  // Health Check Routes
-  healthRouter.get("/", (req: Request, res: Response) => {
-    res.json({
-      success: true,
-      data: {
-        status: "healthy",
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        version: process.version
+  // Health Check Routes - Updated to verify Supabase connection
+  healthRouter.get("/", asyncHandler(async (req: Request, res: Response) => {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+    
+    let ok = false;
+    
+    if (url && key && url.startsWith('https://')) {
+      try {
+        const supabase = createClient(url, key, { auth: { persistSession: false } });
+        const { data, error } = await supabase.from('providers').select('id').limit(1);
+        ok = !error;
+      } catch (e) {
+        ok = false;
       }
-    });
-  });
+    }
+    
+    res.json({ ok });
+  }));
 
   // Healthz route - as specified in requirements
   app.get('/healthz', (req: Request, res: Response) => {
@@ -244,49 +267,237 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // Providers Routes with Supabase
-  providersRouter.get("/", asyncHandler(async (req: Request, res: Response) => {
-    console.log('[PROVIDERS] Request received:', req.query);
+  // Users Routes
+  usersRouter.post("/", asyncHandler(async (req: Request, res: Response) => {
+    console.log('[USERS] Creating/fetching user:', req.body);
+    
+    try {
+      const validatedData = insertUserSchema.parse(req.body);
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+      
+      if (!url || !key) {
+        return res.status(502).json({ success: false, error: 'Supabase configuration missing' });
+      }
+      
+      const supabase = createClient(url, key, { auth: { persistSession: false } });
+      
+      // Check if user exists by email or phone
+      let existingUser = null;
+      if (validatedData.email) {
+        const { data } = await supabase.from('users').select('*').eq('email', validatedData.email).single();
+        existingUser = data;
+      }
+      if (!existingUser && validatedData.phone) {
+        const { data } = await supabase.from('users').select('*').eq('phone', validatedData.phone).single();
+        existingUser = data;
+      }
+      
+      if (existingUser) {
+        console.log(`[USERS] Returning existing user: ${existingUser.id}`);
+        return res.json({ success: true, user: existingUser });
+      }
+      
+      // Create new user
+      const { data: newUser, error } = await supabase.from('users').insert([validatedData]).select().single();
+      
+      if (error) {
+        console.error('[USERS] Creation error:', error);
+        throw error;
+      }
+      
+      console.log(`[USERS] Created new user: ${newUser.id}`);
+      res.json({ success: true, user: newUser });
+    } catch (e: any) {
+      console.error('[USERS] Error:', e?.message);
+      res.status(502).json({ success: false, error: e?.message || 'User creation failed' });
+    }
+  }));
+
+  usersRouter.get("/:id", asyncHandler(async (req: Request, res: Response) => {
+    console.log(`[USERS] Getting user: ${req.params.id}`);
     
     try {
       const url = process.env.SUPABASE_URL;
       const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
       
-      console.log(`[ENV] SUPABASE_URL set: ${!!url}, starts with https: ${!!url && url.startsWith('https://')}`);
-      console.log(`[ENV] SUPABASE_SERVICE_ROLE set: ${!!process.env.SUPABASE_SERVICE_ROLE}`);
-      console.log(`[ENV] SUPABASE_ANON_KEY set: ${!!process.env.SUPABASE_ANON_KEY}`);
-      
-      if (!url || !key || !url.startsWith('https://')) {
-        console.error('[PROVIDERS] Invalid env', { url, keySet: !!key });
-        return res.status(502).json({ 
-          success: false, 
-          error: `Supabase env invalid. URL startsWith https? ${!!url && url.startsWith('https://')}, key set? ${!!key}`
-        });
+      if (!url || !key) {
+        return res.status(502).json({ success: false, error: 'Supabase configuration missing' });
       }
       
-      console.log('[PROVIDERS] Creating Supabase client');
       const supabase = createClient(url, key, { auth: { persistSession: false } });
-      
-      console.log('[PROVIDERS] Querying providers table');
-      const { data, error } = await supabase.from('providers').select('*').limit(50);
+      const { data: user, error } = await supabase.from('users').select('*').eq('id', req.params.id).single();
       
       if (error) {
-        console.error('[PROVIDERS] Supabase error:', error);
+        console.error('[USERS] Fetch error:', error);
         throw error;
       }
       
-      console.log(`[PROVIDERS] Successfully retrieved ${data?.length || 0} providers`);
-      res.json({ success: true, data });
+      res.json({ success: true, user });
     } catch (e: any) {
-      console.error('[PROVIDERS] Error:', e?.message, e?.stack);
-      res.status(502).json({ success: false, error: e?.message || 'Upstream error' });
+      console.error('[USERS] Error:', e?.message);
+      res.status(404).json({ success: false, error: 'User not found' });
+    }
+  }));
+
+  // Enhanced Providers Routes with Distance Sorting
+  providersRouter.get("/", asyncHandler(async (req: Request, res: Response) => {
+    console.log('[PROVIDERS] Request received:', req.query);
+    
+    try {
+      const { borough, specialty, lang, lat, lng } = req.query;
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+      
+      if (!url || !key) {
+        return res.status(502).json({ success: false, error: 'Supabase configuration missing' });
+      }
+      
+      const supabase = createClient(url, key, { auth: { persistSession: false } });
+      let query = supabase.from('providers').select('*');
+      
+      // Apply filters
+      if (borough) {
+        query = query.ilike('borough', borough as string);
+      }
+      if (specialty) {
+        query = query.ilike('specialty', `%${specialty}%`);
+      }
+      if (lang) {
+        query = query.contains('languages', [lang as string]);
+      }
+      
+      const { data, error } = await query.limit(50);
+      
+      if (error) {
+        console.error('[PROVIDERS] Query error:', error);
+        throw error;
+      }
+      
+      let results = data || [];
+      
+      // Distance sorting if lat/lng provided
+      if (lat && lng) {
+        const userLat = parseFloat(lat as string);
+        const userLng = parseFloat(lng as string);
+        
+        results = results
+          .filter(p => p.latitude && p.longitude)
+          .map(provider => ({
+            ...provider,
+            distance: calculateDistance(userLat, userLng, parseFloat(provider.latitude), parseFloat(provider.longitude))
+          }))
+          .sort((a, b) => a.distance - b.distance);
+      }
+      
+      console.log(`[PROVIDERS] Successfully retrieved ${results.length} providers`);
+      res.json({ success: true, data: results });
+    } catch (e: any) {
+      console.error('[PROVIDERS] Error:', e?.message);
+      res.status(502).json({ success: false, error: e?.message || 'Provider query failed' });
+    }
+  }));
+
+  // Resources Routes
+  resourcesRouter.get("/", asyncHandler(async (req: Request, res: Response) => {
+    console.log('[RESOURCES] Request received:', req.query);
+    
+    try {
+      const { borough, category, lang, lat, lng } = req.query;
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+      
+      if (!url || !key) {
+        return res.status(502).json({ success: false, error: 'Supabase configuration missing' });
+      }
+      
+      const supabase = createClient(url, key, { auth: { persistSession: false } });
+      let query = supabase.from('resources').select('*');
+      
+      // Apply filters
+      if (borough) {
+        query = query.ilike('borough', borough as string);
+      }
+      if (category) {
+        query = query.ilike('category', `%${category}%`);
+      }
+      if (lang) {
+        query = query.contains('languages', [lang as string]);
+      }
+      
+      const { data, error } = await query.limit(50);
+      
+      if (error) {
+        console.error('[RESOURCES] Query error:', error);
+        throw error;
+      }
+      
+      let results = data || [];
+      
+      // Distance sorting if lat/lng provided
+      if (lat && lng) {
+        const userLat = parseFloat(lat as string);
+        const userLng = parseFloat(lng as string);
+        
+        results = results
+          .filter(r => r.latitude && r.longitude)
+          .map(resource => ({
+            ...resource,
+            distance: calculateDistance(userLat, userLng, parseFloat(resource.latitude), parseFloat(resource.longitude))
+          }))
+          .sort((a, b) => a.distance - b.distance);
+      }
+      
+      console.log(`[RESOURCES] Successfully retrieved ${results.length} resources`);
+      res.json({ success: true, data: results });
+    } catch (e: any) {
+      console.error('[RESOURCES] Error:', e?.message);
+      res.status(502).json({ success: false, error: e?.message || 'Resource query failed' });
+    }
+  }));
+
+  // Admin Routes
+  adminRouter.get("/overview", asyncHandler(async (req: Request, res: Response) => {
+    console.log('[ADMIN] Overview requested');
+    
+    try {
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+      
+      if (!url || !key) {
+        return res.status(502).json({ success: false, error: 'Supabase configuration missing' });
+      }
+      
+      const supabase = createClient(url, key, { auth: { persistSession: false } });
+      
+      // Get counts for all tables
+      const [usersCount, providersCount, resourcesCount] = await Promise.all([
+        supabase.from('users').select('id', { count: 'exact' }),
+        supabase.from('providers').select('id', { count: 'exact' }),
+        supabase.from('resources').select('id', { count: 'exact' })
+      ]);
+      
+      const overview = {
+        users: usersCount.count || 0,
+        providers: providersCount.count || 0,
+        resources: resourcesCount.count || 0
+      };
+      
+      console.log('[ADMIN] Overview:', overview);
+      res.json({ success: true, data: overview });
+    } catch (e: any) {
+      console.error('[ADMIN] Error:', e?.message);
+      res.status(502).json({ success: false, error: e?.message || 'Admin overview failed' });
     }
   }));
 
   // Mount routers
   apiRouter.use("/server", serverRouter);
   apiRouter.use("/health", healthRouter);
+  apiRouter.use("/users", usersRouter);
   apiRouter.use("/providers", providersRouter);
+  apiRouter.use("/resources", resourcesRouter);
+  apiRouter.use("/admin", adminRouter);
   app.use("/api", apiRouter);
   app.use("/health", healthRouter); // Also mount health directly for k8s compatibility
 
