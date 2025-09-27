@@ -101,4 +101,93 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+import { DatabaseStorage } from "./db-storage";
+
+// Hybrid storage that can fallback to in-memory if database fails
+class HybridStorage implements IStorage {
+  private dbStorage: DatabaseStorage;
+  private memStorage: MemStorage;
+  private useDatabase: boolean = true;
+
+  constructor() {
+    this.dbStorage = new DatabaseStorage();
+    this.memStorage = new MemStorage();
+  }
+
+  setDatabaseMode(enabled: boolean) {
+    this.useDatabase = enabled;
+    if (!enabled) {
+      console.log("📝 Switching to in-memory storage mode");
+    }
+  }
+
+  private async withFallback<T>(dbOperation: () => Promise<T>, memOperation: () => Promise<T>): Promise<T> {
+    if (!this.useDatabase) {
+      return memOperation();
+    }
+
+    try {
+      return await dbOperation();
+    } catch (error) {
+      console.warn("Database operation failed, falling back to memory storage:", error instanceof Error ? error.message : String(error));
+      this.useDatabase = false;
+      return memOperation();
+    }
+  }
+
+  async getUser(id: string): Promise<User | undefined> {
+    return this.withFallback(
+      () => this.dbStorage.getUser(id),
+      () => this.memStorage.getUser(id)
+    );
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    return this.withFallback(
+      () => this.dbStorage.getUserByUsername(username),
+      () => this.memStorage.getUserByUsername(username)
+    );
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    return this.withFallback(
+      () => this.dbStorage.createUser(user),
+      () => this.memStorage.createUser(user)
+    );
+  }
+
+  async getServerLogs(): Promise<ServerLog[]> {
+    return this.withFallback(
+      () => this.dbStorage.getServerLogs(),
+      () => this.memStorage.getServerLogs()
+    );
+  }
+
+  async createServerLog(log: InsertServerLog): Promise<ServerLog> {
+    return this.withFallback(
+      () => this.dbStorage.createServerLog(log),
+      () => this.memStorage.createServerLog(log)
+    );
+  }
+
+  async getServerConfig(): Promise<ServerConfig | undefined> {
+    return this.withFallback(
+      () => this.dbStorage.getServerConfig(),
+      () => this.memStorage.getServerConfig()
+    );
+  }
+
+  async updateServerConfig(config: InsertServerConfig): Promise<ServerConfig> {
+    return this.withFallback(
+      () => this.dbStorage.updateServerConfig(config),
+      () => this.memStorage.updateServerConfig(config)
+    );
+  }
+}
+
+export const storage = new HybridStorage();
+
+// Function to set storage mode based on database connectivity
+export function setStorageMode(dbConnected: boolean) {
+  (storage as HybridStorage).setDatabaseMode(dbConnected);
+}

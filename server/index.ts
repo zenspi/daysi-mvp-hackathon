@@ -4,6 +4,8 @@ import { fileURLToPath } from "url";
 import { registerRoutes } from "./routes";
 import { setupVite } from "./vite";
 import { config, logConfig, isDevelopment } from "./config";
+import { initializeDatabase, testConnection } from "./db";
+import { setStorageMode } from "./storage";
 
 // ES module helper
 const __filename = fileURLToPath(import.meta.url);
@@ -24,6 +26,13 @@ const httpServer = await registerRoutes(app);
 if (isDevelopment()) {
   await setupVite(app, httpServer);
 }
+
+// Initialize and test database connection before starting server
+const dbInitialized = initializeDatabase();
+const dbConnected = dbInitialized ? await testConnection() : false;
+
+// Configure storage mode based on database connectivity
+setStorageMode(dbConnected);
 
 // Start the server
 httpServer.listen(config.PORT, config.HOST, () => {
