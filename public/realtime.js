@@ -233,7 +233,7 @@ class HealthcareVoiceAssistant {
                     this.connectionId = message.connection_id;
                     this.openaiReady = true;
                     console.log('OpenAI connection ready!');
-                    this.sendSessionUpdate();
+                    // Server already sent session config, don't send another one
                     // Resolve connection promise if we're still connecting
                     if (connectResolve) {
                         connectResolve();
@@ -497,10 +497,7 @@ class HealthcareVoiceAssistant {
         this.langBtn.textContent = this.currentLanguage === 'en' ? '🌍 EN' : '🌍 ES';
         this.langBtn.classList.toggle('active', this.currentLanguage === 'es');
         
-        // Update session if connected
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.sendSessionUpdate();
-        }
+        // Session config handled by server, no need to update here
         
         this.showToast(`Language switched to ${this.currentLanguage === 'en' ? 'English' : 'Spanish'}`, 'info');
     }
@@ -526,10 +523,7 @@ class HealthcareVoiceAssistant {
                 this.locationBtn.classList.add('active');
                 this.showToast('Location shared for better recommendations', 'success');
                 
-                // Update session if connected
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    this.sendSessionUpdate();
-                }
+                // Session config handled by server
                 
             } catch (error) {
                 console.error('Location error:', error);
