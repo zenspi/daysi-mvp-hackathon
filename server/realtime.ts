@@ -117,11 +117,15 @@ export function registerRealtime(app: Express, server: Server) {
           
           openaiWS.send(JSON.stringify(sessionConfig));
           
-          // Notify browser that OpenAI connection is ready
-          browserWS.send(JSON.stringify({
-            type: 'connection.ready',
-            connection_id: connectionId
-          }));
+          // Wait a moment for OpenAI to process session config before notifying browser
+          setTimeout(() => {
+            if (browserWS.readyState === WebSocket.OPEN) {
+              browserWS.send(JSON.stringify({
+                type: 'connection.ready',
+                connection_id: connectionId
+              }));
+            }
+          }, 100); // 100ms delay to ensure session is configured
         });
 
         openaiWS.on('message', (data) => {
