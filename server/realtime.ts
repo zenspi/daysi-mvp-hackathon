@@ -158,7 +158,7 @@ export function registerRealtime(app: Express, server: Server) {
           console.error(`[REALTIME] OpenAI WebSocket error for ${connectionId}:`, error);
           console.error(`[REALTIME] Error details:`, {
             message: error.message,
-            code: error.code,
+            code: (error as any).code,
             target: `wss://api.openai.com/v1/realtime?model=${model}`,
             headers: { 
               'Authorization': `Bearer ${apiKey.substring(0, 7)}...`,
