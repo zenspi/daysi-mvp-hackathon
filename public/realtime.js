@@ -104,6 +104,16 @@ class HealthcareVoiceAssistant {
             
             let wsUrl;
             if (externalRelayUrl) {
+                // Validate external relay URL scheme
+                if (!externalRelayUrl.startsWith('wss://') && !externalRelayUrl.startsWith('ws://')) {
+                    reject(new Error('Invalid relay URL: must use ws:// or wss://'));
+                    return;
+                }
+                // Prevent mixed content - require wss on https pages
+                if (window.location.protocol === 'https:' && externalRelayUrl.startsWith('ws://')) {
+                    reject(new Error('Cannot use ws:// relay on https page - use wss://'));
+                    return;
+                }
                 wsUrl = externalRelayUrl;
                 console.log('Using external voice relay:', wsUrl);
             } else {
@@ -138,13 +148,14 @@ class HealthcareVoiceAssistant {
                 reject(new Error('Voice features unavailable'));
             };
             
-            // Timeout after 5 seconds for faster fallback
+            // Timeout after 15 seconds for external relay (allows for cold starts)
+            const timeoutMs = externalRelayUrl ? 15000 : 5000;
             setTimeout(() => {
                 if (this.ws.readyState !== WebSocket.OPEN || !this.openaiReady) {
                     this.ws.close();
                     reject(new Error('Voice features unavailable'));
                 }
-            }, 5000);
+            }, timeoutMs);
         });
     }
     
@@ -258,7 +269,9 @@ class HealthcareVoiceAssistant {
                     console.log('Received connection.ready, connectionId:', message.connection_id);
                     this.connectionId = message.connection_id;
                     this.openaiReady = true;
-                    console.log('OpenAI connection ready! Resolving promise...');
+                    console.log('OpenAI connection ready! Sending session update...');
+                    // Send session configuration to ensure proper language/location settings
+                    this.sendSessionUpdate();
                     // Resolve connection promise if we're still connecting
                     if (connectResolve) {
                         console.log('Resolving connection promise');
