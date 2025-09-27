@@ -210,13 +210,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Healthz route - as specified in requirements
   app.get('/healthz', (req: Request, res: Response) => {
     console.log('[HEALTHZ] Health check requested');
-    const ok = !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE;
+    const ok = !!process.env.SUPABASE_URL && (!!process.env.SUPABASE_SERVICE_ROLE || !!process.env.SUPABASE_ANON_KEY);
     const response = { 
       ok, 
       uptime: process.uptime(), 
       env: { 
         supabaseUrlSet: !!process.env.SUPABASE_URL,
-        serviceRoleSet: !!process.env.SUPABASE_SERVICE_ROLE 
+        serviceRoleSet: !!process.env.SUPABASE_SERVICE_ROLE,
+        anonKeySet: !!process.env.SUPABASE_ANON_KEY
       }
     };
     console.log(`[HEALTHZ] Response:`, response);
@@ -249,10 +250,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     try {
       const url = process.env.SUPABASE_URL;
-      const key = process.env.SUPABASE_SERVICE_ROLE;
+      const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
       
       console.log(`[ENV] SUPABASE_URL set: ${!!url}, starts with https: ${!!url && url.startsWith('https://')}`);
-      console.log(`[ENV] SUPABASE_SERVICE_ROLE set: ${!!key}`);
+      console.log(`[ENV] SUPABASE_SERVICE_ROLE set: ${!!process.env.SUPABASE_SERVICE_ROLE}`);
+      console.log(`[ENV] SUPABASE_ANON_KEY set: ${!!process.env.SUPABASE_ANON_KEY}`);
       
       if (!url || !key || !url.startsWith('https://')) {
         console.error('[PROVIDERS] Invalid env', { url, keySet: !!key });
