@@ -27,6 +27,14 @@ A comprehensive hackathon-ready healthcare discovery platform that combines prov
 - **System Health**: Database connectivity monitoring
 - **Performance Metrics**: API response time tracking
 
+### 🎤 **Realtime Voice Assistant**
+- **Low-Latency Voice Chat**: Direct WebSocket connection to OpenAI Realtime API
+- **Instant Speech Processing**: Real-time voice transcription and responses
+- **Multi-Language Voice Support**: Spanish (formal "usted") and English with cultural awareness
+- **Mixed-Mode Chat**: Seamless switching between voice and text interaction
+- **Fallback Protection**: Automatic fallback to text API with speech synthesis
+- **Location-Aware Responses**: GPS integration for proximity-based recommendations
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -121,6 +129,54 @@ curl -X POST http://localhost:5000/api/ai/recommend-resources \
   }'
 ```
 
+### 🎤 Realtime Voice Assistant Usage
+
+**Quick Test**: Navigate to `/realtime.html` in your browser after starting the server.
+
+#### Voice Interaction Flow
+1. **Access**: Open `http://localhost:5000/realtime.html`
+2. **Start Session**: Click "🎤 Start Voice" button
+3. **Grant Permission**: Allow microphone access when prompted
+4. **Language Selection**: Toggle between EN/ES as needed
+5. **Speak Naturally**: 
+   - English: "I need a pediatrician who speaks Spanish"
+   - Spanish: "Necesito un pediatra en el Bronx que hable español"
+6. **Real-time Processing**: See live transcript and hear immediate responses
+
+#### Expected Behavior
+- **Instant Transcription**: Your words appear in real-time
+- **Contextual Responses**: AI provides relevant healthcare guidance
+- **Cultural Sensitivity**: Spanish responses use formal "usted" tone
+- **Practical Suggestions**: Contact details and next steps included
+- **Emergency Detection**: Urgent symptoms trigger immediate guidance
+
+#### Test Examples
+```bash
+# Spanish healthcare request
+"Necesito un pediatra en el Bronx que hable español."
+# Expected: Instant partial transcript → spoken Spanish response with provider options
+
+# English resource request  
+"I need food assistance near Queens."
+# Expected: Live transcript → English response with resource guidance
+
+# Emergency scenario
+"I have chest pain and dizziness."
+# Expected: Immediate triage response with urgent care guidance
+```
+
+#### Mixed-Mode Features
+- **Text + Voice**: Type messages while voice session is active
+- **Location Sharing**: Click "📍 Use Location" for proximity-based results
+- **Automatic Fallback**: Seamless switch to text API if voice connection drops
+- **Reconnection**: One-click reconnect if WebSocket disconnects
+
+#### Technical Requirements
+- **Browser**: Modern browser with WebRTC support
+- **Microphone**: Required for voice input
+- **Network**: Stable connection for WebSocket streaming
+- **Credits**: OpenAI Realtime API consumption (audio processing + generation)
+
 ## 🏗️ Architecture
 
 ### Technology Stack
@@ -201,6 +257,9 @@ SESSION_SECRET=your-secret-key
 
 # Optional for AI features
 OPENAI_API_KEY=sk-proj-xxx...
+
+# Optional for Realtime Voice features
+MODEL_REALTIME=gpt-4o-realtime-preview  # Default model for voice
 
 # Development settings
 NODE_ENV=development
@@ -295,6 +354,9 @@ Complete API documentation available in [`API_DOCUMENTATION.md`](./API_DOCUMENTA
 | `/api/resources` | GET | Search resources |
 | `/api/ai/recommend-providers` | POST | AI provider recommendations |
 | `/api/ai/recommend-resources` | POST | AI resource recommendations |
+| `/api/ask` | POST | Conversational AI text interface |
+| `/realtime` | WebSocket | Real-time voice assistant |
+| `/realtime.html` | GET | Voice assistant test page |
 | `/api/admin/overview` | GET | Platform statistics |
 
 ## 🛠️ Development

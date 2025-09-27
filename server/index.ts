@@ -6,6 +6,7 @@ import { setupVite } from "./vite";
 import { config, logConfig, isDevelopment } from "./config";
 import { initializeDatabase, testConnection } from "./db";
 import { setStorageMode } from "./storage";
+import { registerRealtime } from "./realtime";
 
 // ES module helper
 const __filename = fileURLToPath(import.meta.url);
@@ -33,6 +34,9 @@ const dbConnected = dbInitialized ? await testConnection() : false;
 
 // Configure storage mode based on database connectivity
 setStorageMode(dbConnected);
+
+// Register Realtime WebSocket functionality
+registerRealtime(app, httpServer);
 
 // Start the server
 httpServer.listen(config.PORT, config.HOST, () => {
