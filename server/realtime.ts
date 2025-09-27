@@ -73,6 +73,8 @@ export function registerRealtime(app: Express, server: Server) {
           return;
         }
 
+        console.log(`[REALTIME] Initializing OpenAI connection for ${connectionId}...`);
+        
         const model = process.env.MODEL_REALTIME || 'gpt-4o-realtime-preview';
         const openaiWS = new WebSocket(`wss://api.openai.com/v1/realtime?model=${model}`, {
           headers: {
@@ -154,20 +156,37 @@ export function registerRealtime(app: Express, server: Server) {
 
         openaiWS.on('error', (error) => {
           console.error(`[REALTIME] OpenAI WebSocket error for ${connectionId}:`, error);
+          console.error(`[REALTIME] Error details:`, {
+            message: error.message,
+            code: error.code,
+            target: `wss://api.openai.com/v1/realtime?model=${model}`,
+            headers: { 
+              'Authorization': `Bearer ${apiKey.substring(0, 7)}...`,
+              'OpenAI-Beta': 'realtime=v1'
+            }
+          });
           browserWS.send(JSON.stringify({ 
             type: 'error', 
-            message: 'OpenAI connection error' 
+            message: 'OpenAI connection error: ' + error.message 
           }));
         });
 
       } catch (error) {
         console.error(`[REALTIME] Failed to initialize OpenAI connection for ${connectionId}:`, error);
+        console.error(`[REALTIME] Network or API access issue - this may be due to:`);
+        console.error(`[REALTIME] 1. Network connectivity to OpenAI servers`);
+        console.error(`[REALTIME] 2. API key lacks Realtime API access`);
+        console.error(`[REALTIME] 3. Environment firewall restrictions`);
+        
         browserWS.send(JSON.stringify({ 
           type: 'error', 
-          message: 'Failed to connect to OpenAI Realtime API' 
+          message: 'Voice features require OpenAI Realtime API access. Text chat is still available.' 
         }));
       }
     }
+
+    // Initialize OpenAI connection
+    await initializeOpenAI();
 
     function cleanup() {
       console.log(`[REALTIME] Cleaning up connection ${connectionId}`);
