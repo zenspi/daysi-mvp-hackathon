@@ -170,6 +170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const adminRouter = Router();
   const aiRouter = Router();
   const askRouter = Router();
+  const voiceRouter = Router();
 
   // Server Management Routes
   serverRouter.get("/config", asyncHandler(async (req: Request, res: Response) => {
@@ -1000,6 +1001,74 @@ Please respond with JSON in this format:
     }
   }));
 
+  // Voice Routes for OpenAI Realtime API with ephemeral tokens
+  voiceRouter.get("/health", asyncHandler(async (req: Request, res: Response) => {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        return res.json({ ok: false, reason: 'missing OPENAI_API_KEY' });
+      }
+      
+      const response = await fetch('https://api.openai.com/v1/models', {
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+        }
+      });
+      
+      if (response.ok) {
+        res.json({ ok: true });
+      } else {
+        const errorText = await response.text();
+        res.json({ 
+          ok: false, 
+          status: response.status, 
+          reason: errorText 
+        });
+      }
+    } catch (error: any) {
+      res.status(500).json({ 
+        ok: false, 
+        reason: error.message 
+      });
+    }
+  }));
+
+  voiceRouter.post("/ephemeral", asyncHandler(async (req: Request, res: Response) => {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(502).json({ error: 'missing OPENAI_API_KEY' });
+      }
+
+      const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+          'OpenAI-Beta': 'realtime=v1'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-realtime-preview',
+          voice: 'verse'
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return res.status(502).json({ 
+          error: data.error?.message || data 
+        });
+      }
+      
+      res.json({ 
+        client_secret: data.client_secret?.value 
+      });
+    } catch (error: any) {
+      res.status(502).json({ 
+        error: error.message 
+      });
+    }
+  }));
+
   // Mount routers
   apiRouter.use("/server", serverRouter);
   apiRouter.use("/health", healthRouter);
@@ -1009,6 +1078,7 @@ Please respond with JSON in this format:
   apiRouter.use("/admin", adminRouter);
   apiRouter.use("/ai", aiRouter);
   apiRouter.use("/ask", askRouter);
+  apiRouter.use("/voice", voiceRouter);
   app.use("/api", apiRouter);
   app.use("/health", healthRouter); // Also mount health directly for k8s compatibility
 

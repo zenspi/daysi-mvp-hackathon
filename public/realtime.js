@@ -57,16 +57,11 @@ class HealthcareVoiceAssistant {
     
     async startVoiceSession() {
         try {
-            console.log('Starting voice session...');
+            console.log('Starting voice session with WebRTC...');
             this.updateStatus('connecting', '🟡 Connecting to voice services...');
             
-            // Connect WebSocket first
-            console.log('Step 1: Connecting WebSocket...');
-            await this.connectWebSocket();
-            console.log('Step 1: WebSocket connected successfully');
-            
-            // Request microphone permission
-            console.log('Step 2: Requesting microphone access...');
+            // Step 1: Request microphone permission
+            console.log('Step 1: Requesting microphone access...');
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 audio: {
                     echoCancellation: true,
@@ -75,12 +70,34 @@ class HealthcareVoiceAssistant {
                     sampleRate: 16000
                 } 
             });
-            console.log('Step 2: Microphone access granted');
+            console.log('Step 1: Microphone access granted');
             
-            // Start recording
-            console.log('Step 3: Starting audio recording...');
-            this.startRecording(stream);
-            console.log('Step 3: Audio recording started');
+            // Step 2: Get ephemeral token
+            console.log('Step 2: Getting ephemeral token...');
+            const response = await fetch('/api/voice/ephemeral', { method: 'POST' });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                let errorMessage = 'Voice features unavailable';
+                
+                if (response.status === 401 || response.status === 403) {
+                    errorMessage = 'OpenAI key invalid or billing issue';
+                } else if (response.status === 502) {
+                    errorMessage = errorData.error || 'OpenAI service unavailable';
+                } else {
+                    errorMessage = errorData.error || 'Network error connecting to voice services';
+                }
+                
+                throw new Error(errorMessage);
+            }
+            
+            const { client_secret } = await response.json();
+            console.log('Step 2: Ephemeral token received');
+            
+            // Step 3: Set up WebRTC connection
+            console.log('Step 3: Setting up WebRTC connection...');
+            await this.connectWebRTC(stream, client_secret);
+            console.log('Step 3: WebRTC connection established');
             
             this.startBtn.disabled = true;
             this.stopBtn.disabled = false;
@@ -91,72 +108,150 @@ class HealthcareVoiceAssistant {
             
         } catch (error) {
             console.error('Voice session failed:', error);
-            this.showToast('Voice not available: ' + error.message, 'error');
+            
+            // Show precise error messages
+            let errorMessage = error.message;
+            if (error.name === 'NotAllowedError') {
+                errorMessage = 'Mic permission denied — click the lock icon → Allow microphone';
+            } else if (error.message.includes('NetworkError')) {
+                errorMessage = 'Network blocked to OpenAI Realtime. Check VPN/Firewall';
+            }
+            
+            this.showToast(errorMessage, 'error');
             this.updateStatus('disconnected', '💬 Text mode - Type your message below');
         }
     }
     
-    async connectWebSocket() {
-        return new Promise((resolve, reject) => {
-            // Use external relay service if VOICE_RELAY_URL is configured via meta tag
-            const relayMeta = document.querySelector('meta[name="voice-relay-url"]');
-            const externalRelayUrl = relayMeta ? relayMeta.content : null;
-            
-            let wsUrl;
-            if (externalRelayUrl) {
-                // Validate external relay URL scheme
-                if (!externalRelayUrl.startsWith('wss://') && !externalRelayUrl.startsWith('ws://')) {
-                    reject(new Error('Invalid relay URL: must use ws:// or wss://'));
-                    return;
+    async connectWebRTC(stream, clientSecret) {
+        return new Promise(async (resolve, reject) => {
+            try {
+                // Create RTCPeerConnection
+                this.pc = new RTCPeerConnection();
+                
+                // Store local stream for cleanup
+                this.localStream = stream;
+                
+                // Add local microphone stream
+                stream.getTracks().forEach(track => {
+                    console.log('Adding track to peer connection:', track.kind);
+                    this.pc.addTrack(track, stream);
+                });
+                
+                // Set up remote audio playback
+                let audioEl = document.getElementById('remote-audio');
+                if (!audioEl) {
+                    audioEl = document.createElement('audio');
+                    audioEl.autoplay = true;
+                    audioEl.id = 'remote-audio';
+                    document.body.appendChild(audioEl);
                 }
-                // Prevent mixed content - require wss on https pages
-                if (window.location.protocol === 'https:' && externalRelayUrl.startsWith('ws://')) {
-                    reject(new Error('Cannot use ws:// relay on https page - use wss://'));
-                    return;
+                
+                this.pc.ontrack = (event) => {
+                    console.log('Received remote track:', event.track.kind);
+                    audioEl.srcObject = event.streams[0];
+                };
+                
+                // Handle server-created data channel from OpenAI
+                this.pc.ondatachannel = (event) => {
+                    console.log('Received data channel from OpenAI:', event.channel.label);
+                    const channel = event.channel;
+                    channel.onopen = () => {
+                        console.log('OpenAI data channel opened');
+                    };
+                    channel.onmessage = (event) => {
+                        console.log('[OpenAI Event]:', event.data);
+                        this.handleOpenAIEvent(event.data);
+                    };
+                };
+                
+                // Create offer
+                const offer = await this.pc.createOffer();
+                await this.pc.setLocalDescription(offer);
+                console.log('Created WebRTC offer, waiting for ICE gathering...');
+                
+                // Wait for ICE gathering to complete
+                await new Promise((resolve) => {
+                    if (this.pc.iceGatheringState === 'complete') {
+                        resolve();
+                    } else {
+                        this.pc.addEventListener('icegatheringstatechange', () => {
+                            if (this.pc.iceGatheringState === 'complete') {
+                                resolve();
+                            }
+                        });
+                    }
+                });
+                
+                console.log('ICE gathering complete, sending offer to OpenAI...');
+                
+                // Send complete SDP offer to OpenAI Realtime API
+                const response = await fetch('https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${clientSecret}`,
+                        'Content-Type': 'application/sdp',
+                        'OpenAI-Beta': 'realtime=v1'
+                    },
+                    body: this.pc.localDescription.sdp
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`WebRTC connection failed: ${response.status}`);
                 }
-                wsUrl = externalRelayUrl;
-                console.log('Using external voice relay:', wsUrl);
-            } else {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                wsUrl = `${protocol}//${window.location.host}/realtime`;
-                console.log('Using local voice server:', wsUrl);
+                
+                const answerSdp = await response.text();
+                const answer = { type: 'answer', sdp: answerSdp };
+                await this.pc.setRemoteDescription(answer);
+                console.log('WebRTC connection established');
+                
+                resolve();
+                
+            } catch (error) {
+                console.error('WebRTC connection failed:', error);
+                reject(error);
             }
-            
-            this.ws = new WebSocket(wsUrl);
-            this.openaiReady = false; // Track OpenAI connection state
-            
-            this.ws.onopen = () => {
-                console.log('WebSocket connected, waiting for OpenAI ready...');
-                console.log('WebSocket readyState:', this.ws.readyState);
-                // Don't resolve yet - wait for connection.ready message
-            };
-            
-            this.ws.onmessage = (event) => {
-                this.handleWebSocketMessage(event, resolve);
-            };
-            
-            this.ws.onclose = (event) => {
-                console.log('WebSocket disconnected:', event.code, event.reason);
-                console.log('Close event details:', event);
-                this.openaiReady = false;
-                this.handleDisconnection();
-            };
-            
-            this.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                this.openaiReady = false;
-                reject(new Error('Voice features unavailable'));
-            };
-            
-            // Timeout after 15 seconds for external relay (allows for cold starts)
-            const timeoutMs = externalRelayUrl ? 15000 : 5000;
-            setTimeout(() => {
-                if (this.ws.readyState !== WebSocket.OPEN || !this.openaiReady) {
-                    this.ws.close();
-                    reject(new Error('Voice features unavailable'));
-                }
-            }, timeoutMs);
         });
+    }
+    
+    handleOpenAIEvent(data) {
+        try {
+            const event = JSON.parse(data);
+            console.log('OpenAI Event:', event);
+            
+            switch (event.type) {
+                case 'conversation.item.input_audio_transcription.completed':
+                    this.updateTranscript(`You: ${event.transcript}`, 'user');
+                    break;
+                    
+                case 'conversation.item.input_audio_transcription.partial':
+                    this.updateTranscript(`You (partial): ${event.transcript}`, 'user-partial');
+                    break;
+                    
+                case 'response.audio_transcript.partial':
+                    this.updateTranscript(`Assistant (speaking): ${event.transcript}`, 'assistant-partial');
+                    break;
+                    
+                case 'response.audio_transcript.done':
+                    this.addMessage(event.transcript, 'assistant');
+                    break;
+                    
+                case 'conversation.item.created':
+                    if (event.item && event.item.type === 'message') {
+                        const content = event.item.content?.[0];
+                        if (content && content.text) {
+                            this.addMessage(content.text, 'assistant');
+                        }
+                    }
+                    break;
+                    
+                case 'error':
+                    console.error('OpenAI Error:', event);
+                    this.showToast('Voice error: ' + event.message, 'error');
+                    break;
+            }
+        } catch (error) {
+            console.error('Error handling OpenAI event:', error);
+        }
     }
     
     startRecording(stream) {
@@ -434,28 +529,25 @@ class HealthcareVoiceAssistant {
     }
     
     stopVoiceSession() {
+        console.log('Stopping voice session...');
+        
         if (this.mediaRecorder && this.isRecording) {
             this.mediaRecorder.stop();
         }
         
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            // Commit any pending audio and create final response
-            this.ws.send(JSON.stringify({
-                type: 'input_audio_buffer.commit'
-            }));
-            this.ws.send(JSON.stringify({
-                type: 'response.create'
-            }));
-            
-            // Wait a moment then cancel and close
-            setTimeout(() => {
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.send(JSON.stringify({
-                        type: 'response.cancel'
-                    }));
-                    this.ws.close();
-                }
-            }, 500);
+        // Close WebRTC peer connection
+        if (this.pc) {
+            this.pc.close();
+            this.pc = null;
+        }
+        
+        // Close any data channels (handled by peer connection closure)
+        this.dataChannel = null;
+        
+        // Stop local media tracks
+        if (this.localStream) {
+            this.localStream.getTracks().forEach(track => track.stop());
+            this.localStream = null;
         }
         
         // Clear audio queue
@@ -466,6 +558,8 @@ class HealthcareVoiceAssistant {
         this.stopBtn.disabled = true;
         this.updateStatus('disconnected', '🔴 Voice session ended');
         this.hideAudioVisualizer();
+        
+        console.log('Voice session stopped');
     }
     
     async sendTextMessage() {
@@ -579,9 +673,29 @@ class HealthcareVoiceAssistant {
         }
     }
     
-    reconnect() {
+    async reconnect() {
         this.reconnectBtn.style.display = 'none';
-        this.startVoiceSession();
+        this.updateStatus('connecting', '🟡 Checking voice services...');
+        
+        try {
+            // Check voice health first
+            const healthResponse = await fetch('/api/voice/health');
+            const healthData = await healthResponse.json();
+            
+            if (!healthData.ok) {
+                this.showToast(`Voice service issue: ${healthData.reason}`, 'error');
+                this.reconnectBtn.style.display = 'inline-block';
+                this.updateStatus('disconnected', '💬 Text mode - Type your message below');
+                return;
+            }
+            
+            // If health check passes, try to reconnect
+            this.startVoiceSession();
+        } catch (error) {
+            this.showToast('Voice health check failed', 'error');
+            this.reconnectBtn.style.display = 'inline-block';
+            this.updateStatus('disconnected', '💬 Text mode - Type your message below');
+        }
     }
     
     handleDisconnection() {
