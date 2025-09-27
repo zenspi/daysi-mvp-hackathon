@@ -292,6 +292,11 @@ class HealthcareVoiceAssistant {
                     this.showToast('Error: ' + message.message, 'error');
                     break;
                     
+                case 'status':
+                    console.log('Status update:', message.message);
+                    this.showToast(message.message, 'info');
+                    break;
+                    
                 default:
                     // Handle other message types as needed
                     break;

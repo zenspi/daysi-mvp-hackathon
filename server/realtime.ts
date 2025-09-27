@@ -194,9 +194,10 @@ export function registerRealtime(app: Express, server: Server) {
         }
 
         if (connection.openaiWS.readyState !== WebSocket.OPEN) {
+          console.log(`[REALTIME] OpenAI connection not ready for ${connectionId}, state: ${connection.openaiWS.readyState}`);
           browserWS.send(JSON.stringify({ 
-            type: 'error', 
-            message: 'OpenAI connection not ready' 
+            type: 'status', 
+            message: 'Connecting to voice services...' 
           }));
           return;
         }
