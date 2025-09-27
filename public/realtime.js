@@ -55,7 +55,7 @@ class HealthcareVoiceAssistant {
     
     async startVoiceSession() {
         try {
-            this.updateStatus('connecting', '🟡 Connecting...');
+            this.updateStatus('connecting', '🟡 Initializing voice features...');
             
             // Request microphone permission
             const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -80,8 +80,8 @@ class HealthcareVoiceAssistant {
             
         } catch (error) {
             console.error('Failed to start voice session:', error);
-            this.showToast('Failed to start voice session: ' + error.message, 'error');
-            this.updateStatus('disconnected', '🔴 Failed to connect');
+            this.showToast('Voice features unavailable. Using text mode instead.', 'info');
+            this.updateStatus('disconnected', '💬 Text mode ready - Type below');
         }
     }
     
@@ -111,16 +111,16 @@ class HealthcareVoiceAssistant {
             this.ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
                 this.openaiReady = false;
-                reject(new Error('WebSocket connection failed'));
+                reject(new Error('Voice features unavailable'));
             };
             
-            // Timeout after 15 seconds
+            // Timeout after 5 seconds for faster fallback
             setTimeout(() => {
                 if (this.ws.readyState !== WebSocket.OPEN || !this.openaiReady) {
                     this.ws.close();
-                    reject(new Error('OpenAI connection timeout'));
+                    reject(new Error('Voice features unavailable'));
                 }
-            }, 15000);
+            }, 5000);
         });
     }
     
@@ -273,7 +273,10 @@ class HealthcareVoiceAssistant {
                     break;
                     
                 case 'error':
-                    this.showToast('Error: ' + message.message, 'error');
+                    // Don't show "OpenAI connection not ready" errors as they're internal timing issues
+                    if (message.message !== 'OpenAI connection not ready') {
+                        this.showToast('Error: ' + message.message, 'error');
+                    }
                     break;
                     
                 default:
@@ -540,12 +543,12 @@ class HealthcareVoiceAssistant {
     }
     
     handleDisconnection() {
-        this.updateStatus('disconnected', '🔴 Disconnected');
+        this.updateStatus('disconnected', '💬 Text mode ready - Type your questions below');
         this.startBtn.disabled = false;
         this.stopBtn.disabled = true;
         this.reconnectBtn.style.display = 'inline-block';
         this.hideAudioVisualizer();
-        this.showToast('Connection lost. Click Reconnect to try again.', 'error');
+        // Switch to text mode quietly without showing error
     }
     
     updateStatus(state, text) {
