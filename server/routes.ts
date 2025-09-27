@@ -568,7 +568,7 @@ Please respond with JSON in this format:
         response_format: { type: "json_object" }
       });
 
-      const analysis = JSON.parse(aiResponse.choices[0].message.content);
+      const analysis = JSON.parse(aiResponse.choices[0].message.content || '{}');
       
       // Get recommended providers with details
       const recommendedProviders = providers.filter(p => 
@@ -658,7 +658,7 @@ Please respond with JSON in this format:
         response_format: { type: "json_object" }
       });
 
-      const analysis = JSON.parse(aiResponse.choices[0].message.content);
+      const analysis = JSON.parse(aiResponse.choices[0].message.content || '{}');
       
       // Get recommended resources with details
       const recommendedResources = resources.filter(r => 
@@ -932,7 +932,7 @@ Please respond with JSON in this format:
         messages: [{ role: "user", content: pulsePrompt }]
       });
       
-      const pulse_suggestion = pulseResponse.choices[0].message.content || 'Stay healthy and don\\'t hesitate to seek help when needed.';
+      const pulse_suggestion = pulseResponse.choices[0].message.content || 'Stay healthy and don\'t hesitate to seek help when needed.';
       
       // 6) Store pulse if consent given
       if (pulseConsent && currentUser) {
@@ -975,6 +975,9 @@ Please respond with JSON in this format:
         try {
           console.log('[ASK] Falling back to gpt-4o-mini');
           const openai = getOpenAIClient();
+          if (!openai) {
+            return res.status(500).json({ success: false, error: 'AI features not configured' });
+          }
           const fallbackResponse = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "user", content: `Please help with this healthcare request in a caring way: "${req.body.message}"` }]
