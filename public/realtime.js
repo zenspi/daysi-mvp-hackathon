@@ -42,6 +42,8 @@ class HealthcareVoiceAssistant {
                 this.sendTextMessage();
             }
         });
+
+        // WebSocket connection now working - focus on voice functionality
     }
     
     async initializeAudio() {
@@ -55,9 +57,16 @@ class HealthcareVoiceAssistant {
     
     async startVoiceSession() {
         try {
-            this.updateStatus('connecting', '🟡 Initializing voice features...');
+            console.log('Starting voice session...');
+            this.updateStatus('connecting', '🟡 Connecting to voice services...');
+            
+            // Connect WebSocket first
+            console.log('Step 1: Connecting WebSocket...');
+            await this.connectWebSocket();
+            console.log('Step 1: WebSocket connected successfully');
             
             // Request microphone permission
+            console.log('Step 2: Requesting microphone access...');
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 audio: {
                     echoCancellation: true,
@@ -66,22 +75,24 @@ class HealthcareVoiceAssistant {
                     sampleRate: 16000
                 } 
             });
-            
-            // Connect WebSocket
-            await this.connectWebSocket();
+            console.log('Step 2: Microphone access granted');
             
             // Start recording
+            console.log('Step 3: Starting audio recording...');
             this.startRecording(stream);
+            console.log('Step 3: Audio recording started');
             
             this.startBtn.disabled = true;
             this.stopBtn.disabled = false;
-            this.updateStatus('connected', '🟢 Voice session active');
+            this.updateStatus('connected', '🟢 Voice session active - Start speaking!');
             this.showAudioVisualizer();
             
+            console.log('Voice session fully active!');
+            
         } catch (error) {
-            console.error('Failed to start voice session:', error);
-            this.showToast('Voice features unavailable. Using text mode instead.', 'info');
-            this.updateStatus('disconnected', '💬 Text mode ready - Type below');
+            console.error('Voice session failed:', error);
+            this.showToast('Voice not available: ' + error.message, 'error');
+            this.updateStatus('disconnected', '💬 Text mode - Type your message below');
         }
     }
     
@@ -95,6 +106,7 @@ class HealthcareVoiceAssistant {
             
             this.ws.onopen = () => {
                 console.log('WebSocket connected, waiting for OpenAI ready...');
+                console.log('WebSocket readyState:', this.ws.readyState);
                 // Don't resolve yet - wait for connection.ready message
             };
             
@@ -104,6 +116,7 @@ class HealthcareVoiceAssistant {
             
             this.ws.onclose = (event) => {
                 console.log('WebSocket disconnected:', event.code, event.reason);
+                console.log('Close event details:', event);
                 this.openaiReady = false;
                 this.handleDisconnection();
             };
@@ -225,17 +238,19 @@ class HealthcareVoiceAssistant {
     handleWebSocketMessage(event, connectResolve = null) {
         try {
             // All OpenAI Realtime messages are JSON, not binary
+            console.log('Raw message received:', event.data);
             const message = JSON.parse(event.data);
-            console.log('Received message:', message);
+            console.log('Parsed message:', message);
             
             switch (message.type) {
                 case 'connection.ready':
+                    console.log('Received connection.ready, connectionId:', message.connection_id);
                     this.connectionId = message.connection_id;
                     this.openaiReady = true;
-                    console.log('OpenAI connection ready!');
-                    // Server already sent session config, don't send another one
+                    console.log('OpenAI connection ready! Resolving promise...');
                     // Resolve connection promise if we're still connecting
                     if (connectResolve) {
+                        console.log('Resolving connection promise');
                         connectResolve();
                     }
                     break;
@@ -273,10 +288,8 @@ class HealthcareVoiceAssistant {
                     break;
                     
                 case 'error':
-                    // Don't show "OpenAI connection not ready" errors as they're internal timing issues
-                    if (message.message !== 'OpenAI connection not ready') {
-                        this.showToast('Error: ' + message.message, 'error');
-                    }
+                    console.error('WebSocket error received:', message);
+                    this.showToast('Error: ' + message.message, 'error');
                     break;
                     
                 default:
@@ -619,6 +632,7 @@ class HealthcareVoiceAssistant {
             this.toast.classList.remove('show');
         }, 4000);
     }
+
 }
 
 // Initialize when DOM is ready
