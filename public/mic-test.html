@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Microphone Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
+        button { padding: 12px 24px; margin: 10px; font-size: 16px; }
+        .success { color: green; }
+        .error { color: red; }
+        #visualizer { width: 100%; height: 100px; background: #f0f0f0; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>🎤 Microphone Access Test</h1>
+    
+    <button onclick="testMicrophone()" id="testBtn">Test Microphone Access</button>
+    <button onclick="stopTest()" id="stopBtn" disabled>Stop Test</button>
+    
+    <div id="status"></div>
+    <canvas id="visualizer"></canvas>
+    
+    <h3>What this tests:</h3>
+    <ul>
+        <li>✅ Browser microphone permissions</li>
+        <li>✅ Audio input capture</li>
+        <li>✅ Real-time audio processing</li>
+        <li>✅ Audio visualization</li>
+    </ul>
+    
+    <script>
+        let mediaRecorder = null;
+        let audioContext = null;
+        let analyser = null;
+        let animationId = null;
+        
+        async function testMicrophone() {
+            const status = document.getElementById('status');
+            const testBtn = document.getElementById('testBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            
+            try {
+                status.innerHTML = '<div>Requesting microphone access...</div>';
+                
+                // Request microphone access
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { 
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 16000
+                    } 
+                });
+                
+                status.innerHTML = '<div class="success">✅ Microphone access granted!</div>';
+                
+                // Set up audio visualization
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                
+                // Start visualization
+                visualizeAudio();
+                
+                // Set up media recorder
+                mediaRecorder = new MediaRecorder(stream);
+                let chunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    chunks.push(event.data);
+                    status.innerHTML += '<div class="success">📊 Audio data received: ' + event.data.size + ' bytes</div>';
+                };
+                
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'audio/webm' });
+                    status.innerHTML += '<div class="success">🎵 Recorded ' + blob.size + ' bytes total</div>';
+                    chunks = [];
+                };
+                
+                mediaRecorder.start(100); // Get data every 100ms
+                
+                testBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                status.innerHTML += '<div class="success">🎤 Recording started! Speak now...</div>';
+                
+            } catch (error) {
+                status.innerHTML = '<div class="error">❌ Microphone test failed: ' + error.message + '</div>';
+                console.error('Microphone test error:', error);
+            }
+        }
+        
+        function stopTest() {
+            const status = document.getElementById('status');
+            const testBtn = document.getElementById('testBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            
+            if (mediaRecorder) {
+                mediaRecorder.stop();
+            }
+            
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            
+            if (audioContext) {
+                audioContext.close();
+            }
+            
+            status.innerHTML += '<div>🛑 Test stopped</div>';
+            testBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+        
+        function visualizeAudio() {
+            const canvas = document.getElementById('visualizer');
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = 100;
+            
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            function draw() {
+                animationId = requestAnimationFrame(draw);
+                
+                analyser.getByteFrequencyData(dataArray);
+                
+                ctx.fillStyle = '#f0f0f0';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const barWidth = (canvas.width / bufferLength) * 2.5;
+                let barHeight;
+                let x = 0;
+                
+                for (let i = 0; i < bufferLength; i++) {
+                    barHeight = dataArray[i] * 0.4;
+                    
+                    ctx.fillStyle = `rgb(50, ${barHeight + 100}, 250)`;
+                    ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                    
+                    x += barWidth + 1;
+                }
+            }
+            
+            draw();
+        }
+    </script>
+</body>
+</html>
