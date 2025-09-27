@@ -8,7 +8,7 @@ import { ZodError } from "zod";
 import { config, isDevelopment } from "./config";
 import { getDatabase } from "./db";
 import { providers } from "@shared/schema";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, ilike } from "drizzle-orm";
 
 // Async error wrapper utility
 const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
@@ -231,27 +231,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Providers Routes
   providersRouter.get("/", asyncHandler(async (req: Request, res: Response) => {
-    const { borough, specialty, lang } = req.query;
+    const { borough, specialty, languages, lang } = req.query;
     
     try {
-      // Try database first, then fallback to empty results for hybrid storage
+      // Try database first, then fallback to error response
       const db = getDatabase();
       
       // Normalize query parameters to strings (handle arrays)
       const normalizedBorough = Array.isArray(borough) ? borough[0] : borough;
       const normalizedSpecialty = Array.isArray(specialty) ? specialty[0] : specialty;
+      const normalizedLanguages = Array.isArray(languages) ? languages[0] : languages;
       const normalizedLang = Array.isArray(lang) ? lang[0] : lang;
       
       // Build filter conditions
       const conditions = [];
+      
+      // Borough: exact ilike (case-insensitive exact match)
       if (normalizedBorough && typeof normalizedBorough === 'string') {
-        conditions.push(eq(providers.borough, normalizedBorough));
+        conditions.push(ilike(providers.borough, normalizedBorough));
       }
+      
+      // Specialty: partial ilike (case-insensitive partial match)
       if (normalizedSpecialty && typeof normalizedSpecialty === 'string') {
-        conditions.push(eq(providers.specialty, normalizedSpecialty));
+        conditions.push(ilike(providers.specialty, `%${normalizedSpecialty}%`));
       }
-      if (normalizedLang && typeof normalizedLang === 'string') {
-        conditions.push(eq(providers.lang, normalizedLang));
+      
+      // Languages: treat as comma-separated string and check if it contains the language
+      const languageToFilter = normalizedLanguages || normalizedLang;
+      if (languageToFilter && typeof languageToFilter === 'string') {
+        conditions.push(ilike(providers.lang, `%${languageToFilter}%`));
       }
       
       // Execute query with or without filters
@@ -264,12 +272,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: results
       });
     } catch (error) {
-      // If database fails, return empty results with message
-      console.warn("Providers query failed, returning empty results:", error);
-      res.json({
-        success: true,
-        data: [],
-        message: "Database unavailable - showing empty results"
+      // Return error format as requested
+      console.error("Providers query failed:", error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Database query failed"
       });
     }
   }));
