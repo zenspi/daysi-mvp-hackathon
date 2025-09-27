@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { Router } from "express";
 import cors from "cors";
 import { storage } from "./storage";
-import { insertServerLogSchema, insertUserSchema, users, providers, resources } from "@shared/schema";
+import { insertServerLogSchema, insertUserSchema, insertPulseSchema, users, providers, resources, pulses } from "@shared/schema";
 import { ZodError } from "zod";
 import { config, isDevelopment } from "./config";
 import { createClient } from "@supabase/supabase-js";
@@ -169,6 +169,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const resourcesRouter = Router();
   const adminRouter = Router();
   const aiRouter = Router();
+  const askRouter = Router();
 
   // Server Management Routes
   serverRouter.get("/config", asyncHandler(async (req: Request, res: Response) => {
@@ -683,6 +684,319 @@ Please respond with JSON in this format:
     }
   }));
 
+  // Smart Conversational AI Endpoint
+  askRouter.post("/", asyncHandler(async (req: Request, res: Response) => {
+    console.log('[ASK] Conversational AI request:', req.body);
+    
+    try {
+      const { message, lang, user, location, pulseConsent } = req.body;
+      
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ success: false, error: 'Message is required' });
+      }
+      
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+      
+      if (!url || !key) {
+        return res.status(502).json({ success: false, error: 'Database configuration missing' });
+      }
+      
+      const supabase = createClient(url, key, { auth: { persistSession: false } });
+      let currentUser = null;
+      
+      // 1) Upsert user if email/phone provided
+      if (user && (user.email || user.phone)) {
+        const userData = {
+          ...user,
+          language: user.language || lang || 'English'
+        };
+        
+        // Check if user exists
+        let existingUser = null;
+        if (user.email) {
+          const { data } = await supabase.from('users').select('*').eq('email', user.email).single();
+          existingUser = data;
+        }
+        if (!existingUser && user.phone) {
+          const { data } = await supabase.from('users').select('*').eq('phone', user.phone).single();
+          existingUser = data;
+        }
+        
+        if (existingUser) {
+          currentUser = existingUser;
+        } else {
+          const { data: newUser, error } = await supabase.from('users').insert([userData]).select().single();
+          if (!error) {
+            currentUser = newUser;
+            console.log(`[ASK] Created user: ${newUser.id}`);
+          }
+        }
+      }
+      
+      const openai = getOpenAIClient();
+      if (!openai) {
+        return res.status(500).json({ success: false, error: 'AI features not configured' });
+      }
+      
+      // 2) Auto-detect language if missing
+      let detectedLang = lang || (currentUser?.language) || 'English';
+      if (!lang && !currentUser?.language) {
+        try {
+          const langDetectPrompt = `Detect the language of this message and respond with just the language name in English: "${message}"`;
+          const langResponse = await openai.chat.completions.create({
+            model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+            messages: [{ role: "user", content: langDetectPrompt }]
+          });
+          
+          const detected = (langResponse.choices[0].message.content || '').trim().toLowerCase();
+          if (detected.includes('spanish') || detected.includes('español')) {
+            detectedLang = 'Spanish';
+          } else if (detected.includes('english')) {
+            detectedLang = 'English';
+          }
+        } catch (e) {
+          console.log('[ASK] Language detection failed, defaulting to English');
+        }
+      }
+      
+      // 3) Intent routing - determine if care access or social needs
+      const intentPrompt = `Classify this healthcare request into one category. Respond with just "providers" or "resources":
+
+      Message: "${message}"
+      
+      - "providers" for: doctor, clinic, medical care, specialist, appointment, checkup, symptoms, pain, diagnosis, treatment, hospital, physician, nurse practitioner
+      - "resources" for: food assistance, housing, legal aid, insurance help, benefits, WIC, food stamps, shelter, unemployment, social services, financial help`;
+      
+      const intentResponse = await openai.chat.completions.create({
+        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        messages: [{ role: "user", content: intentPrompt }]
+      });
+      
+      const intent = (intentResponse.choices[0].message.content || '').trim().toLowerCase().includes('resources') ? 'resources' : 'providers';
+      
+      // Extract filters and location info
+      const hasLocation = location?.lat && location?.lng && location?.consent;
+      const filterPrompt = `Extract search filters from this message. Respond with JSON:
+      
+      Message: "${message}"
+      Intent: ${intent}
+      
+      ${intent === 'providers' ? 
+        `{ "specialty": "medical specialty if mentioned", "borough": "NYC borough if mentioned" }` :
+        `{ "category": "resource category if mentioned", "borough": "NYC borough if mentioned" }`
+      }`;
+      
+      const filterResponse = await openai.chat.completions.create({
+        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        messages: [{ role: "user", content: filterPrompt }],
+        response_format: { type: "json_object" }
+      });
+      
+      const filters = JSON.parse(filterResponse.choices[0].message.content || '{}');
+      
+      // 4) Query providers or resources
+      let results = [];
+      let queryParams = new URLSearchParams();
+      
+      if (intent === 'providers') {
+        if (filters.borough) queryParams.append('borough', filters.borough);
+        if (filters.specialty) queryParams.append('specialty', filters.specialty);
+        if (detectedLang && detectedLang !== 'English') queryParams.append('lang', detectedLang);
+        if (hasLocation) {
+          queryParams.append('lat', location.lat.toString());
+          queryParams.append('lng', location.lng.toString());
+        }
+        
+        let query = supabase.from('providers').select('*');
+        if (filters.borough) query = query.ilike('borough', filters.borough);
+        if (filters.specialty) query = query.ilike('specialty', `%${filters.specialty}%`);
+        if (detectedLang && detectedLang !== 'English') {
+          query = query.contains('languages', [detectedLang]);
+        }
+        
+        const { data } = await query.limit(10);
+        let providerResults = data || [];
+        
+        // Distance sorting if location provided
+        if (hasLocation && location.lat && location.lng) {
+          const userLat = parseFloat(location.lat);
+          const userLng = parseFloat(location.lng);
+          
+          providerResults = providerResults
+            .filter(p => p.latitude && p.longitude)
+            .map(provider => ({
+              ...provider,
+              distance_km: (calculateDistance(userLat, userLng, parseFloat(provider.latitude), parseFloat(provider.longitude)) * 1.60934).toFixed(1)
+            }))
+            .sort((a, b) => parseFloat(a.distance_km) - parseFloat(b.distance_km));
+        }
+        
+        results = providerResults.slice(0, 3).map(p => ({
+          id: p.id,
+          name: p.name,
+          practice_name: p.practice_name || p.practiceName,
+          specialty: p.specialty,
+          borough: p.borough,
+          phone: p.phone,
+          distance_km: p.distance_km || undefined
+        }));
+        
+      } else { // resources
+        if (filters.borough) queryParams.append('borough', filters.borough);
+        if (filters.category) queryParams.append('category', filters.category);
+        if (detectedLang && detectedLang !== 'English') queryParams.append('lang', detectedLang);
+        if (hasLocation) {
+          queryParams.append('lat', location.lat.toString());
+          queryParams.append('lng', location.lng.toString());
+        }
+        
+        let query = supabase.from('resources').select('*');
+        if (filters.borough) query = query.ilike('borough', filters.borough);
+        if (filters.category) query = query.ilike('category', `%${filters.category}%`);
+        if (detectedLang && detectedLang !== 'English') {
+          query = query.contains('languages', [detectedLang]);
+        }
+        
+        const { data } = await query.limit(10);
+        let resourceResults = data || [];
+        
+        // Distance sorting if location provided
+        if (hasLocation && location.lat && location.lng) {
+          const userLat = parseFloat(location.lat);
+          const userLng = parseFloat(location.lng);
+          
+          resourceResults = resourceResults
+            .filter(r => r.latitude && r.longitude)
+            .map(resource => ({
+              ...resource,
+              distance_km: (calculateDistance(userLat, userLng, parseFloat(resource.latitude), parseFloat(resource.longitude)) * 1.60934).toFixed(1)
+            }))
+            .sort((a, b) => parseFloat(a.distance_km) - parseFloat(b.distance_km));
+        }
+        
+        results = resourceResults.slice(0, 3).map(r => ({
+          id: r.id,
+          name: r.name,
+          category: r.category,
+          borough: r.borough,
+          phone: r.phone,
+          distance_km: r.distance_km || undefined
+        }));
+      }
+      
+      // 5) Compose empathetic reply in chosen language
+      const resultsList = results.map(r => {
+        if (intent === 'providers') {
+          const provider = r as any;
+          return detectedLang === 'Spanish' ?
+            `- ${provider.name}${provider.practice_name ? ` en ${provider.practice_name}` : ''} (${provider.specialty}) en ${provider.borough}${provider.distance_km ? `, ${provider.distance_km}km` : ''} - Tel: ${provider.phone}` :
+            `- ${provider.name}${provider.practice_name ? ` at ${provider.practice_name}` : ''} (${provider.specialty}) in ${provider.borough}${provider.distance_km ? `, ${provider.distance_km}km away` : ''} - Phone: ${provider.phone}`;
+        } else {
+          const resource = r as any;
+          return detectedLang === 'Spanish' ?
+            `- ${resource.name} (${resource.category}) en ${resource.borough}${resource.distance_km ? `, ${resource.distance_km}km` : ''} - Tel: ${resource.phone}` :
+            `- ${resource.name} (${resource.category}) in ${resource.borough}${resource.distance_km ? `, ${resource.distance_km}km away` : ''} - Phone: ${resource.phone}`;
+        }
+      }).join('\n');
+
+      const responsePrompt = detectedLang === 'Spanish' ? 
+        `Usted ha preguntado sobre: "${message}"
+
+        Aquí están las opciones que encontré:
+        ${resultsList}
+
+        Responda en español formal (usted), tono cálido, máximo 120 palabras. 1 frase empática, luego las opciones. Ofrezca "Puedo enviarle los detalles por mensaje." Haga ≤1 pregunta aclaratoria si es necesario.` :
+        
+        `You asked about: "${message}"
+
+        Here are the options I found:
+        ${resultsList}
+
+        Respond in English with empathy and warmth, max 120 words. 1 empathetic sentence, then present the options. Offer "I can text you the details." Ask ≤1 clarifying question if helpful.`;
+      
+      const replyResponse = await openai.chat.completions.create({
+        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        messages: [{ role: "user", content: responsePrompt }]
+      });
+      
+      const reply = replyResponse.choices[0].message.content || 'I apologize, but I had trouble processing your request. Please try again.';
+      
+      // Generate pulse suggestion
+      const pulsePrompt = detectedLang === 'Spanish' ? 
+        `Basado en esta consulta: "${message}", sugiera 1 seguimiento proactivo en español (máx 50 palabras):` :
+        `Based on this inquiry: "${message}", suggest 1 proactive follow-up tip in English (max 50 words):`;
+      
+      const pulseResponse = await openai.chat.completions.create({
+        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        messages: [{ role: "user", content: pulsePrompt }]
+      });
+      
+      const pulse_suggestion = pulseResponse.choices[0].message.content || 'Stay healthy and don\\'t hesitate to seek help when needed.';
+      
+      // 6) Store pulse if consent given
+      if (pulseConsent && currentUser) {
+        try {
+          const pulseData = {
+            userId: currentUser.id,
+            type: intent,
+            payload: {
+              message,
+              intent,
+              results: results.length,
+              language: detectedLang,
+              suggestion: pulse_suggestion
+            }
+          };
+          
+          await supabase.from('pulses').insert([pulseData]);
+          console.log(`[ASK] Stored pulse for user: ${currentUser.id}`);
+        } catch (e) {
+          console.log('[ASK] Failed to store pulse:', e);
+        }
+      }
+      
+      console.log(`[ASK] Processed ${intent} request in ${detectedLang}, found ${results.length} results`);
+      
+      res.json({
+        success: true,
+        reply,
+        reply_lang: detectedLang,
+        intent,
+        results,
+        pulse_suggestion
+      });
+      
+    } catch (e: any) {
+      console.error('[ASK] Error:', e?.message);
+      
+      // Fallback to gpt-4o-mini on gpt-5 failure
+      if (e?.message?.includes('model') || e?.message?.includes('gpt-5')) {
+        try {
+          console.log('[ASK] Falling back to gpt-4o-mini');
+          const openai = getOpenAIClient();
+          const fallbackResponse = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: `Please help with this healthcare request in a caring way: "${req.body.message}"` }]
+          });
+          
+          res.json({
+            success: true,
+            reply: fallbackResponse.choices[0].message.content || 'I apologize for the inconvenience. Please try again later.',
+            reply_lang: req.body.lang || 'English',
+            intent: 'providers',
+            results: [],
+            pulse_suggestion: "Consider booking a follow-up if symptoms persist."
+          });
+        } catch (fallbackError: any) {
+          res.status(500).json({ success: false, error: fallbackError?.message || 'AI conversation failed' });
+        }
+      } else {
+        res.status(500).json({ success: false, error: e?.message || 'Conversation processing failed' });
+      }
+    }
+  }));
+
   // Mount routers
   apiRouter.use("/server", serverRouter);
   apiRouter.use("/health", healthRouter);
@@ -691,6 +1005,7 @@ Please respond with JSON in this format:
   apiRouter.use("/resources", resourcesRouter);
   apiRouter.use("/admin", adminRouter);
   apiRouter.use("/ai", aiRouter);
+  apiRouter.use("/ask", askRouter);
   app.use("/api", apiRouter);
   app.use("/health", healthRouter); // Also mount health directly for k8s compatibility
 
