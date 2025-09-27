@@ -274,6 +274,36 @@
             margin-bottom: 8px;
             color: #164e63;
         }
+        
+        .lang-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #475569;
+        }
+        
+        .lang-chip.en {
+            background: #dbeafe;
+            border-color: #93c5fd;
+            color: #1e40af;
+        }
+        
+        .lang-chip.es {
+            background: #fef3c7;
+            border-color: #fbbf24;
+            color: #92400e;
+        }
+        
+        .lang-chip.locked {
+            background: #fee2e2;
+            border-color: #fca5a5;
+            color: #b91c1c;
+        }
     </style>
 </head>
 <body>
@@ -299,6 +329,8 @@
         <button id="langBtn" class="btn btn-secondary">🌍 EN</button>
         <button id="locationBtn" class="btn btn-secondary">📍 Use Location</button>
         <button id="reconnectBtn" class="btn btn-secondary" style="display:none;">🔄 Reconnect</button>
+        <div id="lang-chip" class="lang-chip en">EN</div>
+        <button id="resetLangBtn" class="btn btn-secondary" title="Reset language lock">🔓 Reset</button>
     </div>
 
     <div class="audio-visualizer" style="display: none;">

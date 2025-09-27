@@ -1,0 +1,51 @@
+PROJECT AUDIT & FIX PACK — DAYSI
+
+Please audit and fix the following, then report back with a short checklist of what you changed and where (files + line numbers).
+
+A) VOICE ALWAYS IN SPANISH – FIX
+1) Find any hardcoded 'es', 'es-ES', 'es-US' language or voice defaults in public/realtime.js, public/realtime.html, client code, or server/routes.ts.
+2) Set the default replyLang = 'en'.
+3) Implement auto-language follow with hysteresis:
+   - Maintain langState = { replyLang:'en', locked:false, window:[] }.
+   - On each user message/transcript, detect language:
+       • Use Realtime transcript language if present; if not, call GET /api/detect-language?text=...
+       • Push {code, conf} into window (keep last 3). 
+       • If !locked and 2 of last 3 match with conf>=0.7 and differ from replyLang => switch.
+   - Explicit commands:
+       • “responde en español / answer in Spanish” => replyLang='es', locked=true
+       • “responde en inglés / answer in English” => replyLang='en', locked=true
+       • “puedes cambiar / you can switch” => locked=false
+   - Before every response.create or /api/ask, include instruction:
+       “Always reply only in ${replyLang}. If user mixes languages, translate internally and reply in ${replyLang}. Keep culturally fluent, warm tone.”
+   - Map TTS voices per turn: { en:'en-US', es:'es-US' }.
+
+B) REALTIME STABILITY – FIX
+1) Ensure WebRTC token comes from /session and auto-renews before expiry; reconnect on peer ice failures.
+2) Keep the RTCPeerConnection open across turns (don’t close after each reply).
+3) MediaRecorder timeslice=100ms; playback queue for response.output_audio.delta (no gaps).
+4) Raise max_output_audio_duration to ~20s if supported.
+5) Add keepalive ping every 10s over datachannel.
+6) Add clear console logs: connection state, token renews, lang→ changes.
+
+C) /api/ask FALLBACK – VERIFY
+1) On /assistant (text mode) ensure POST /api/ask works:
+   - Accepts {message, lang, lat, lng}
+   - Returns text; synthesize audio via TTS (OpenAI if configured, else SpeechSynthesis fallback).
+2) Include the same language instruction and voice mapping as above.
+
+D) DETECT LANGUAGE ENDPOINT – ADD/VERIFY
+1) Add GET /api/detect-language?text=... returning { code:'en'|'es', conf:number } using a small OpenAI call (json mode).
+2) Call this only when Realtime transcript has no language code.
+
+E) ENV & LOGS – VERIFY
+1) Confirm OPENAI_API_KEY is present in Deploy env; print a one-line sanity log on server start (masking value).
+2) Expose /health and /server/logs links somewhere in README for quick checks.
+
+F) UI TOUCH-UPS
+1) On /realtime.html and /assistant, show a small language chip (read-only) that reflects langState.replyLang so we can see switching.
+2) Add a “Reset language lock” button that sets locked=false.
+
+Deliver:
+- Implement all fixes.
+- Tell me the test URLs to try (realtime, assistant).
+- Summarize exactly what changed (files/lines) and any TODOs.

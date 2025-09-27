@@ -1069,6 +1069,63 @@ Please respond with JSON in this format:
     }
   }));
 
+  // Language Detection Route
+  voiceRouter.get("/detect-language", asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const { text } = req.query;
+      
+      if (!text || typeof text !== 'string') {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Missing or invalid text parameter' 
+        });
+      }
+
+      const openai = getOpenAIClient();
+      if (!openai) {
+        return res.status(502).json({ 
+          success: false, 
+          error: 'Language detection unavailable - missing OPENAI_API_KEY' 
+        });
+      }
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{
+          role: "user",
+          content: `Detect the language of this text and return confidence score. Text: "${text}"`
+        }],
+        response_format: { type: "json_object" },
+        max_tokens: 50
+      });
+
+      let result;
+      try {
+        result = JSON.parse(response.choices[0].message.content || '{}');
+      } catch {
+        result = { code: 'en', conf: 0.5 };
+      }
+
+      // Normalize response
+      const code = result.language === 'spanish' || result.language === 'Spanish' || result.code === 'es' ? 'es' : 'en';
+      const conf = Number(result.confidence || result.conf || 0.8);
+
+      res.json({
+        success: true,
+        code: code,
+        conf: Math.min(Math.max(conf, 0), 1) // Clamp between 0-1
+      });
+
+    } catch (error: any) {
+      console.error('Language detection error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Language detection failed',
+        fallback: { code: 'en', conf: 0.5 }
+      });
+    }
+  }));
+
   // Mount routers
   apiRouter.use("/server", serverRouter);
   apiRouter.use("/health", healthRouter);

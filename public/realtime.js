@@ -4,7 +4,13 @@ class HealthcareVoiceAssistant {
         this.mediaRecorder = null;
         this.audioContext = null;
         this.isRecording = false;
-        this.currentLanguage = 'en';
+        this.currentLanguage = 'en'; // Keep for UI compatibility
+        // Language state with hysteresis
+        this.langState = {
+            replyLang: 'en',
+            locked: false,
+            window: [] // Keep last 3 detections: [{code, conf}, ...]
+        };
         this.userLocation = null;
         this.connectionId = null;
         this.audioChunks = [];
@@ -37,6 +43,12 @@ class HealthcareVoiceAssistant {
         this.reconnectBtn.addEventListener('click', () => this.reconnect());
         this.sendBtn.addEventListener('click', () => this.sendTextMessage());
         
+        // Reset language lock button
+        const resetLangBtn = document.getElementById('resetLangBtn');
+        if (resetLangBtn) {
+            resetLangBtn.addEventListener('click', () => this.resetLanguageLock());
+        }
+        
         this.textInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 this.sendTextMessage();
@@ -67,12 +79,92 @@ class HealthcareVoiceAssistant {
         console.log(enabled ? 'Microphone enabled' : 'Microphone muted during AI speech');
     }
     
+    // Language detection with hysteresis
+    async detectLanguage(text) {
+        try {
+            // Check for explicit language commands first
+            const lowerText = text.toLowerCase();
+            if (lowerText.includes('responde en español') || lowerText.includes('answer in spanish')) {
+                this.langState.replyLang = 'es';
+                this.langState.locked = true;
+                console.log('🔒 Language locked to Spanish by explicit command');
+                this.updateLanguageIndicator();
+                return { code: 'es', conf: 1.0, explicit: true };
+            }
+            if (lowerText.includes('responde en inglés') || lowerText.includes('answer in english')) {
+                this.langState.replyLang = 'en';
+                this.langState.locked = true;
+                console.log('🔒 Language locked to English by explicit command');
+                this.updateLanguageIndicator();
+                return { code: 'en', conf: 1.0, explicit: true };
+            }
+            if (lowerText.includes('puedes cambiar') || lowerText.includes('you can switch')) {
+                this.langState.locked = false;
+                console.log('🔓 Language lock removed');
+                this.updateLanguageIndicator();
+                return { code: this.langState.replyLang, conf: 1.0, explicit: true };
+            }
+
+            // Auto-detection if not locked
+            if (!this.langState.locked) {
+                const response = await fetch(`/api/voice/detect-language?text=${encodeURIComponent(text)}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Add to detection window
+                    this.langState.window.push({ code: data.code, conf: data.conf });
+                    if (this.langState.window.length > 3) {
+                        this.langState.window.shift(); // Keep only last 3
+                    }
+
+                    // Check for language switch (2 of last 3 match with conf >= 0.7)
+                    if (this.langState.window.length >= 2) {
+                        const recentDetections = this.langState.window.slice(-3);
+                        const targetLang = data.code;
+                        const matches = recentDetections.filter(d => d.code === targetLang && d.conf >= 0.7);
+                        
+                        if (matches.length >= 2 && targetLang !== this.langState.replyLang) {
+                            this.langState.replyLang = targetLang;
+                            console.log(`🌍 Auto-switched to ${targetLang} (hysteresis: ${matches.length}/3 matches)`);
+                            this.updateLanguageIndicator();
+                        }
+                    }
+
+                    return { code: data.code, conf: data.conf };
+                }
+            }
+
+            return { code: this.langState.replyLang, conf: 0.8 };
+        } catch (error) {
+            console.error('Language detection failed:', error);
+            return { code: this.langState.replyLang, conf: 0.5 };
+        }
+    }
+
+    // Update language indicator in UI
+    updateLanguageIndicator() {
+        // Update main language button
+        this.currentLanguage = this.langState.replyLang; // Keep for UI compatibility
+        this.langBtn.textContent = this.langState.replyLang === 'en' ? '🌍 EN' : '🌍 ES';
+        this.langBtn.classList.toggle('active', this.langState.replyLang === 'es');
+        
+        // Update language chip if it exists
+        const langChip = document.getElementById('lang-chip');
+        if (langChip) {
+            langChip.textContent = `${this.langState.replyLang.toUpperCase()}${this.langState.locked ? ' 🔒' : ''}`;
+            langChip.className = `lang-chip ${this.langState.replyLang} ${this.langState.locked ? 'locked' : ''}`;
+        }
+    }
+
+    // Get TTS voice based on current language
+    getTTSVoice() {
+        return this.langState.replyLang === 'es' ? 'es-US' : 'en-US';
+    }
+
     // Unified session update method - tries WebRTC control channel first, WebSocket fallback
     sendSessionUpdate() {
-        // Prepare session configuration
-        const instructions = this.currentLanguage === 'es' 
-            ? 'You are a helpful healthcare navigation assistant. Provide empathetic, concise responses in Spanish using formal "usted" tone. Focus on healthcare provider recommendations, social services guidance, emergency triage when appropriate, and practical next steps.'
-            : 'You are a helpful healthcare navigation assistant. Provide empathetic, concise responses in English. Do not switch languages unless explicitly asked. Focus on healthcare provider recommendations, social services guidance, emergency triage when appropriate, and practical next steps.';
+        // Prepare session configuration with current language state
+        const instructions = `Always reply only in ${this.langState.replyLang}. If user mixes languages, translate internally and reply in ${this.langState.replyLang}. Keep culturally fluent, warm tone. You are a helpful healthcare navigation assistant. Provide empathetic, concise responses. Focus on healthcare provider recommendations, social services guidance, emergency triage when appropriate, and practical next steps.`;
         
         // Try WebRTC control channel first (preferred for realtime)
         if (this.controlChannel && this.controlChannel.readyState === 'open') {
@@ -92,7 +184,7 @@ class HealthcareVoiceAssistant {
             };
             
             this.controlChannel.send(JSON.stringify(sessionConfig));
-            console.log(`Sent session update via WebRTC control channel for ${this.currentLanguage === 'es' ? 'Spanish' : 'English'} language`);
+            console.log(`📤 Session update via WebRTC control channel for ${this.langState.replyLang} (locked: ${this.langState.locked})`);
             return;
         }
         
@@ -113,18 +205,19 @@ class HealthcareVoiceAssistant {
                     },
                     modalities: ['text', 'audio'],
                     metadata: {
-                        language: this.currentLanguage,
+                        language: this.langState.replyLang,
+                        locked: this.langState.locked,
                         ...(this.userLocation && { location: this.userLocation })
                     }
                 }
             };
             
             this.ws.send(JSON.stringify(sessionConfig));
-            console.log(`Sent session update via WebSocket for ${this.currentLanguage === 'es' ? 'Spanish' : 'English'} language`);
+            console.log(`📤 Session update via WebSocket for ${this.langState.replyLang} (locked: ${this.langState.locked})`);
             return;
         }
         
-        console.log('No available channel for session update (neither control channel nor WebSocket ready)');
+        console.log('⚠️ No available channel for session update');
     }
     
     async startVoiceSession() {
@@ -305,6 +398,13 @@ class HealthcareVoiceAssistant {
             switch (event.type) {
                 case 'conversation.item.input_audio_transcription.completed':
                     this.updateTranscript(`You: ${event.transcript}`, 'user');
+                    // Trigger language detection on completed transcript
+                    this.detectLanguage(event.transcript).then(detection => {
+                        if (detection.explicit) {
+                            // Send session update immediately for explicit commands
+                            this.sendSessionUpdate();
+                        }
+                    });
                     break;
                     
                 case 'conversation.item.input_audio_transcription.partial':
@@ -668,7 +768,13 @@ class HealthcareVoiceAssistant {
         this.addMessage(text, 'user');
         this.textInput.value = '';
         
+        // Trigger language detection for text input
+        await this.detectLanguage(text);
+        
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            // Send session update first to ensure proper language
+            this.sendSessionUpdate();
+            
             // Send as text via WebSocket
             const textMessage = {
                 type: 'conversation.item.create',
@@ -702,7 +808,7 @@ class HealthcareVoiceAssistant {
                 },
                 body: JSON.stringify({
                     message,
-                    lang: this.currentLanguage === 'es' ? 'Spanish' : 'English',
+                    lang: this.langState.replyLang === 'es' ? 'Spanish' : 'English',
                     location: this.userLocation,
                     user: { email: 'voice-user@demo.com', name: 'Voice User' }
                 })
@@ -716,7 +822,7 @@ class HealthcareVoiceAssistant {
                 // Use speech synthesis to speak the reply
                 if ('speechSynthesis' in window) {
                     const utterance = new SpeechSynthesisUtterance(data.reply);
-                    utterance.lang = this.currentLanguage === 'es' ? 'es-ES' : 'en-US';
+                    utterance.lang = this.getTTSVoice(); // Use mapped voice
                     utterance.rate = 0.9;
                     utterance.pitch = 1.0;
                     speechSynthesis.speak(utterance);
@@ -731,14 +837,25 @@ class HealthcareVoiceAssistant {
     }
     
     toggleLanguage() {
-        this.currentLanguage = this.currentLanguage === 'en' ? 'es' : 'en';
-        this.langBtn.textContent = this.currentLanguage === 'en' ? '🌍 EN' : '🌍 ES';
-        this.langBtn.classList.toggle('active', this.currentLanguage === 'es');
+        // Toggle language state
+        this.langState.replyLang = this.langState.replyLang === 'en' ? 'es' : 'en';
+        this.langState.locked = true; // Manual toggle locks the language
+        
+        // Update UI indicators
+        this.updateLanguageIndicator();
         
         // Send session update over WebRTC control channel to change AI language
         this.sendSessionUpdate();
         
-        this.showToast(`Language switched to ${this.currentLanguage === 'en' ? 'English' : 'Spanish'}`, 'info');
+        this.showToast(`Language locked to ${this.langState.replyLang === 'en' ? 'English' : 'Spanish'}`, 'info');
+    }
+
+    // Reset language lock (new function for UI button)
+    resetLanguageLock() {
+        this.langState.locked = false;
+        this.langState.window = []; // Clear detection history
+        this.updateLanguageIndicator();
+        this.showToast('Language lock removed - will auto-detect', 'info');
     }
     
     async requestLocation() {
