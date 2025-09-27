@@ -67,6 +67,66 @@ class HealthcareVoiceAssistant {
         console.log(enabled ? 'Microphone enabled' : 'Microphone muted during AI speech');
     }
     
+    // Unified session update method - tries WebRTC control channel first, WebSocket fallback
+    sendSessionUpdate() {
+        // Prepare session configuration
+        const instructions = this.currentLanguage === 'es' 
+            ? 'You are a helpful healthcare navigation assistant. Provide empathetic, concise responses in Spanish using formal "usted" tone. Focus on healthcare provider recommendations, social services guidance, emergency triage when appropriate, and practical next steps.'
+            : 'You are a helpful healthcare navigation assistant. Provide empathetic, concise responses in English. Do not switch languages unless explicitly asked. Focus on healthcare provider recommendations, social services guidance, emergency triage when appropriate, and practical next steps.';
+        
+        // Try WebRTC control channel first (preferred for realtime)
+        if (this.controlChannel && this.controlChannel.readyState === 'open') {
+            const sessionConfig = {
+                type: 'session.update',
+                session: {
+                    voice: 'alloy',
+                    instructions: instructions,
+                    turn_detection: { 
+                        type: 'server_vad', 
+                        threshold: 0.6, 
+                        prefix_padding_ms: 200, 
+                        silence_duration_ms: 700 
+                    },
+                    modalities: ['text', 'audio']
+                }
+            };
+            
+            this.controlChannel.send(JSON.stringify(sessionConfig));
+            console.log(`Sent session update via WebRTC control channel for ${this.currentLanguage === 'es' ? 'Spanish' : 'English'} language`);
+            return;
+        }
+        
+        // Fallback to WebSocket if control channel not available
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            const sessionConfig = {
+                type: 'session.update',
+                session: {
+                    voice: 'alloy',
+                    input_audio_format: 'pcm16',
+                    output_audio_format: 'pcm16',
+                    instructions: instructions,
+                    turn_detection: { 
+                        type: 'server_vad', 
+                        threshold: 0.6, 
+                        prefix_padding_ms: 200, 
+                        silence_duration_ms: 700 
+                    },
+                    modalities: ['text', 'audio'],
+                    metadata: {
+                        language: this.currentLanguage,
+                        ...(this.userLocation && { location: this.userLocation })
+                    }
+                }
+            };
+            
+            this.ws.send(JSON.stringify(sessionConfig));
+            console.log(`Sent session update via WebSocket for ${this.currentLanguage === 'es' ? 'Spanish' : 'English'} language`);
+            return;
+        }
+        
+        console.log('No available channel for session update (neither control channel nor WebSocket ready)');
+    }
+    
     async startVoiceSession() {
         try {
             console.log('Starting voice session with WebRTC...');
@@ -179,23 +239,7 @@ class HealthcareVoiceAssistant {
                         console.log('OpenAI data channel opened');
                         
                         // Send session configuration to pin language and improve settings
-                        const sessionConfig = {
-                            type: 'session.update',
-                            session: {
-                                voice: 'alloy',
-                                instructions: 'Always respond in English, concise, caring. Do not switch languages unless explicitly asked.',
-                                turn_detection: { 
-                                    type: 'server_vad', 
-                                    threshold: 0.6, 
-                                    prefix_padding_ms: 200, 
-                                    silence_duration_ms: 700 
-                                },
-                                modalities: ['text', 'audio']
-                            }
-                        };
-                        
-                        channel.send(JSON.stringify(sessionConfig));
-                        console.log('Sent session configuration to pin English language');
+                        this.sendSessionUpdate();
                     };
                     
                     channel.onmessage = (event) => {
@@ -267,13 +311,27 @@ class HealthcareVoiceAssistant {
                     this.updateTranscript(`You (partial): ${event.transcript}`, 'user-partial');
                     break;
                     
-                case 'response.audio_transcript.partial':
-                    this.updateTranscript(`Assistant (speaking): ${event.transcript}`, 'assistant-partial');
-                    // Mute microphone during AI speech to prevent feedback (only on first partial)
+                case 'response.created':
+                case 'response.started':
+                    // Mute microphone immediately when AI response starts (before any audio)
                     if (!this.aiSpeaking) {
                         this.aiSpeaking = true;
                         this.setMicEnabled(false);
+                        console.log('AI response started - microphone muted to prevent feedback');
                     }
+                    break;
+                    
+                case 'response.output_audio.delta':
+                    // Fallback mute on first audio chunk if we missed response.created/started
+                    if (!this.aiSpeaking) {
+                        this.aiSpeaking = true;
+                        this.setMicEnabled(false);
+                        console.log('AI audio detected - microphone muted to prevent feedback');
+                    }
+                    break;
+                    
+                case 'response.audio_transcript.partial':
+                    this.updateTranscript(`Assistant (speaking): ${event.transcript}`, 'assistant-partial');
                     break;
                     
                 case 'response.audio_transcript.done':
@@ -281,6 +339,7 @@ class HealthcareVoiceAssistant {
                     // Re-enable microphone when AI is done speaking
                     this.aiSpeaking = false;
                     this.setMicEnabled(true);
+                    console.log('AI response completed - microphone re-enabled');
                     break;
                     
                 case 'conversation.item.created':
@@ -301,9 +360,26 @@ class HealthcareVoiceAssistant {
                     }
                     break;
                     
+                case 'response.interrupted':
+                case 'response.cancelled':
+                case 'response.canceled':
+                    // Re-enable microphone if response was interrupted/cancelled
+                    if (this.aiSpeaking) {
+                        console.log('Re-enabling microphone after response interrupted/cancelled/canceled');
+                        this.aiSpeaking = false;
+                        this.setMicEnabled(true);
+                    }
+                    break;
+                    
                 case 'error':
                     console.error('OpenAI Error:', event);
                     this.showToast('Voice error: ' + event.message, 'error');
+                    // Re-enable microphone on error to prevent being stuck muted
+                    if (this.aiSpeaking) {
+                        console.log('Re-enabling microphone after error');
+                        this.aiSpeaking = false;
+                        this.setMicEnabled(true);
+                    }
                     break;
             }
         } catch (error) {
@@ -482,45 +558,6 @@ class HealthcareVoiceAssistant {
         }
     }
     
-    sendSessionUpdate() {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-        
-        const sessionUpdate = {
-            type: 'session.update',
-            session: {
-                voice: 'alloy',
-                input_audio_format: 'pcm16',
-                output_audio_format: 'pcm16',
-                instructions: this.getLanguageInstructions(),
-                turn_detection: {
-                    type: 'server_vad',
-                    threshold: 0.5,
-                    prefix_padding_ms: 300,
-                    silence_duration_ms: 800
-                },
-                metadata: {
-                    language: this.currentLanguage,
-                    ...(this.userLocation && { location: this.userLocation })
-                }
-            }
-        };
-        
-        this.ws.send(JSON.stringify(sessionUpdate));
-    }
-    
-    getLanguageInstructions() {
-        const baseInstructions = `You are a helpful healthcare navigation assistant. Provide empathetic, concise responses focusing on:
-        - Healthcare provider recommendations  
-        - Social services guidance
-        - Emergency triage when appropriate
-        - Practical next steps and contact information`;
-        
-        if (this.currentLanguage === 'es') {
-            return baseInstructions + `\n\nFor Spanish responses: Use formal "usted" tone, warm and respectful. Keep responses under 120 words. Provide caring, professional guidance in Spanish.`;
-        } else {
-            return baseInstructions + `\n\nFor English responses: Use empathetic tone, maximum 120 words. Provide caring, practical guidance.`;
-        }
-    }
     
     async playAssistantAudioDelta(base64Delta) {
         try {
@@ -698,7 +735,8 @@ class HealthcareVoiceAssistant {
         this.langBtn.textContent = this.currentLanguage === 'en' ? '🌍 EN' : '🌍 ES';
         this.langBtn.classList.toggle('active', this.currentLanguage === 'es');
         
-        // Session config handled by server, no need to update here
+        // Send session update over WebRTC control channel to change AI language
+        this.sendSessionUpdate();
         
         this.showToast(`Language switched to ${this.currentLanguage === 'en' ? 'English' : 'Spanish'}`, 'info');
     }
