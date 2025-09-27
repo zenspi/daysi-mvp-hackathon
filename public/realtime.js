@@ -98,8 +98,19 @@ class HealthcareVoiceAssistant {
     
     async connectWebSocket() {
         return new Promise((resolve, reject) => {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/realtime`;
+            // Use external relay service if VOICE_RELAY_URL is configured via meta tag
+            const relayMeta = document.querySelector('meta[name="voice-relay-url"]');
+            const externalRelayUrl = relayMeta ? relayMeta.content : null;
+            
+            let wsUrl;
+            if (externalRelayUrl) {
+                wsUrl = externalRelayUrl;
+                console.log('Using external voice relay:', wsUrl);
+            } else {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                wsUrl = `${protocol}//${window.location.host}/realtime`;
+                console.log('Using local voice server:', wsUrl);
+            }
             
             this.ws = new WebSocket(wsUrl);
             this.openaiReady = false; // Track OpenAI connection state
