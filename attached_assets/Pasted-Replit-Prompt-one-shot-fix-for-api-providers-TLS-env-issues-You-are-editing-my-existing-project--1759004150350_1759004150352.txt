@@ -1,0 +1,115 @@
+Replit Prompt (one-shot fix for /api/providers TLS/env issues)
+
+You are editing my existing project. Make minimal, idempotent changes.
+Goal: get /api/providers working against Supabase and add diagnostics so I can see clear errors in logs.
+
+Do all of the following (detect framework first):
+
+Framework detect & choose path
+
+If you find express/fastify/koa server: follow the Express Path.
+
+If this is Next.js (has /pages/api or app/api): follow the Next.js Path.
+
+Don’t change the framework.
+
+Dependencies
+
+Ensure @supabase/supabase-js is installed. If missing, add it.
+
+Don’t remove other deps.
+
+Env checks
+
+Expect these env vars (read via process.env):
+SUPABASE_URL (must start with https://), SUPABASE_SERVICE_ROLE (server key), optional OPENAI_API_KEY.
+
+Create a .env.example file listing them (placeholders only).
+
+Health route
+
+Add /healthz route that returns { ok: true, uptime, env: { supabaseUrlSet: !!SUPABASE_URL, serviceRoleSet: !!SUPABASE_SERVICE_ROLE } }.
+
+Providers route (with strong logging)
+
+Implement GET /api/providers:
+
+Validate envs at runtime; if missing or SUPABASE_URL not starting with https://, return 502 with a clear message and log it.
+
+Create Supabase client: createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, { auth: { persistSession: false } }).
+
+Query: supabase.from('providers').select('*').limit(50).
+
+On success: res.json({ success: true, data }).
+
+On error: console.error full error and res.status(502).json({ success:false, error: error.message }).
+
+Server binding / port
+
+Ensure the app listens on process.env.PORT || 3000 and host 0.0.0.0. Add a log line confirming the port and host.
+
+Console clarity
+
+Prefix all logs from these routes with tags: [HEALTHZ], [PROVIDERS], [ENV].
+
+Don’t break the frontend
+
+Do not rename folders or change build commands beyond what’s needed.
+
+Package scripts
+
+Keep existing scripts; if missing, add "start": "node server.js" or appropriate file, and "dev": "nodemon server.js" for Express; for Next.js keep "next dev".
+
+Final message (print in the editor)
+
+Tell me exactly which files you changed and paste the created/modified code blocks.
+
+Express Path specifics
+
+If there’s a server.js/index.js, add:
+
+import express from 'express';
+import { createClient } from '@supabase/supabase-js';
+const app = express();
+const PORT = process.env.PORT || 3000;
+const HOST = '0.0.0.0';
+// Health
+app.get('/healthz', (req,res)=> {
+  const ok = !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE;
+  res.json({ ok, uptime: process.uptime(), env: {
+    supabaseUrlSet: !!process.env.SUPABASE_URL,
+    serviceRoleSet: !!process.env.SUPABASE_SERVICE_ROLE
+  }});
+});
+// Providers
+app.get('/api/providers', async (req,res)=>{
+  try{
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE;
+    if(!url || !key || !url.startsWith('https://')){
+      console.error('[PROVIDERS] Invalid env', { url, keySet: !!key });
+      return res.status(502).json({ success:false, error:`Supabase env invalid. URL startsWith https? ${!!url && url.startsWith('https://')}, key set? ${!!key}`});
+    }
+    const supabase = createClient(url, key, { auth:{ persistSession:false }});
+    const { data, error } = await supabase.from('providers').select('*').limit(50);
+    if(error) throw error;
+    res.json({ success:true, data });
+  } catch(e){
+    console.error('[PROVIDERS] Error:', e?.message, e?.stack);
+    res.status(502).json({ success:false, error: e?.message || 'Upstream error' });
+  }
+});
+app.listen(PORT, HOST, ()=> console.log(`[SERVER] listening on http://${HOST}:${PORT}`));
+
+
+Next.js Path specifics
+
+Create /pages/api/healthz.ts (or app/api/healthz/route.ts) and /pages/api/providers.ts (or app/api/providers/route.ts) with the same logic as above using Next API handler/RouteHandlers.
+
+Testing instructions (show in final message)
+
+Visit /healthz → expect { ok:true, ... } and supabaseUrlSet/serviceRoleSet both true.
+
+Visit /api/providers → expect { success:true, data:[...] } or a clear error message pointing to the missing env.
+
+Do not expose actual keys in any client-side code. Do not move the service role key to the browser.

@@ -6,9 +6,7 @@ import { storage } from "./storage";
 import { insertServerLogSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { config, isDevelopment } from "./config";
-import { getDatabase } from "./db";
-import { providers } from "@shared/schema";
-import { and, eq, ilike } from "drizzle-orm";
+import { createClient } from "@supabase/supabase-js";
 
 // Async error wrapper utility
 const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
@@ -209,6 +207,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Healthz route - as specified in requirements
+  app.get('/healthz', (req: Request, res: Response) => {
+    console.log('[HEALTHZ] Health check requested');
+    const ok = !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE;
+    const response = { 
+      ok, 
+      uptime: process.uptime(), 
+      env: { 
+        supabaseUrlSet: !!process.env.SUPABASE_URL,
+        serviceRoleSet: !!process.env.SUPABASE_SERVICE_ROLE 
+      }
+    };
+    console.log(`[HEALTHZ] Response:`, response);
+    res.json(response);
+  });
+
   healthRouter.get("/ready", (req: Request, res: Response) => {
     res.json({
       success: true,
@@ -229,55 +243,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // Providers Routes
+  // Providers Routes with Supabase
   providersRouter.get("/", asyncHandler(async (req: Request, res: Response) => {
-    const { borough, specialty, languages, lang } = req.query;
+    console.log('[PROVIDERS] Request received:', req.query);
     
     try {
-      // Try database first, then fallback to error response
-      const db = getDatabase();
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE;
       
-      // Normalize query parameters to strings (handle arrays)
-      const normalizedBorough = Array.isArray(borough) ? borough[0] : borough;
-      const normalizedSpecialty = Array.isArray(specialty) ? specialty[0] : specialty;
-      const normalizedLanguages = Array.isArray(languages) ? languages[0] : languages;
-      const normalizedLang = Array.isArray(lang) ? lang[0] : lang;
+      console.log(`[ENV] SUPABASE_URL set: ${!!url}, starts with https: ${!!url && url.startsWith('https://')}`);
+      console.log(`[ENV] SUPABASE_SERVICE_ROLE set: ${!!key}`);
       
-      // Build filter conditions
-      const conditions = [];
-      
-      // Borough: exact ilike (case-insensitive exact match)
-      if (normalizedBorough && typeof normalizedBorough === 'string') {
-        conditions.push(ilike(providers.borough, normalizedBorough));
+      if (!url || !key || !url.startsWith('https://')) {
+        console.error('[PROVIDERS] Invalid env', { url, keySet: !!key });
+        return res.status(502).json({ 
+          success: false, 
+          error: `Supabase env invalid. URL startsWith https? ${!!url && url.startsWith('https://')}, key set? ${!!key}`
+        });
       }
       
-      // Specialty: partial ilike (case-insensitive partial match)
-      if (normalizedSpecialty && typeof normalizedSpecialty === 'string') {
-        conditions.push(ilike(providers.specialty, `%${normalizedSpecialty}%`));
+      console.log('[PROVIDERS] Creating Supabase client');
+      const supabase = createClient(url, key, { auth: { persistSession: false } });
+      
+      console.log('[PROVIDERS] Querying providers table');
+      const { data, error } = await supabase.from('providers').select('*').limit(50);
+      
+      if (error) {
+        console.error('[PROVIDERS] Supabase error:', error);
+        throw error;
       }
       
-      // Languages: treat as comma-separated string and check if it contains the language
-      const languageToFilter = normalizedLanguages || normalizedLang;
-      if (languageToFilter && typeof languageToFilter === 'string') {
-        conditions.push(ilike(providers.lang, `%${languageToFilter}%`));
-      }
-      
-      // Execute query with or without filters
-      const results = conditions.length > 0
-        ? await db.select().from(providers).where(and(...conditions))
-        : await db.select().from(providers);
-      
-      res.json({
-        success: true,
-        data: results
-      });
-    } catch (error) {
-      // Return error format as requested
-      console.error("Providers query failed:", error);
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : "Database query failed"
-      });
+      console.log(`[PROVIDERS] Successfully retrieved ${data?.length || 0} providers`);
+      res.json({ success: true, data });
+    } catch (e: any) {
+      console.error('[PROVIDERS] Error:', e?.message, e?.stack);
+      res.status(502).json({ success: false, error: e?.message || 'Upstream error' });
     }
   }));
 
