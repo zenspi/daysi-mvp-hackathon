@@ -1,0 +1,72 @@
+Add OpenAI Realtime conversation alongside the existing /api/ask.
+
+Goal
+- Keep /api/ask (Responses API) for text calls.
+- Add a low-latency voice path using the OpenAI Realtime API with streaming.
+- Provide a tiny browser page to test live mic → AI voice back.
+
+Packages
+- Install: ws, uuid
+
+Env
+- Expect OPENAI_API_KEY to be set.
+- Add MODEL_REALTIME default "gpt-5-realtime-preview" with fallback "gpt-4o-realtime-preview".
+
+Server: WebSocket proxy (/realtime)
+1) Create server/realtime.ts:
+   - Export a function registerRealtime(app, server) that attaches a WS server at path "/realtime".
+   - Use 'ws' to accept browser clients.
+   - For each client:
+     a) Open a WebSocket to OpenAI Realtime endpoint (wss) with Authorization: Bearer OPENAI_API_KEY and model=MODEL_REALTIME.
+     b) Pipe messages bi-directionally:
+        - Any JSON messages from browser → forward to OpenAI.
+        - Support binary audio chunks from browser (PCM/Opus) → forward to OpenAI as "input_audio_buffer.append" frames.
+     c) Relay assistant frames back to browser:
+        - Partial transcripts
+        - Tool/results messages
+        - Audio chunks (assistant speech) – forward as binary with a small header {type:"audio"} or a separate WS message with {type:"audio", chunk: <base64>}.
+     d) On close/error, clean up both sockets.
+
+2) Initialize this from your main server entry (server/index.ts):
+   - After app.listen OR when creating httpServer for Express, call registerRealtime(app, server).
+   - Keep existing routes unchanged.
+
+Speech/Language behavior
+- Default input language auto-detect.
+- If browser sends {type:"session.update", session:{voice:"alloy", input_audio_format:"pcm16", output_audio_format:"pcm16", instructions:"Spanish replies must use 'usted' and warm, concise tone; English replies empathetic and ≤120 words."}}, forward it to OpenAI on connect so it sets the voice and cultural style.
+- Also allow a query or first message field {lang:"es"|"en"} to bias the session.
+
+Client: simple tester page
+3) Create /public/realtime.html and /public/realtime.js:
+   - UI: Start/Stop button, EN/ES toggle, text area showing live transcript and assistant messages.
+   - On Start:
+     * open mic (getUserMedia), create WebSocket to wss://<host>/realtime
+     * send a "session.update" JSON frame with desired voice and language
+     * stream mic audio (MediaRecorder / AudioWorklet) as small binary chunks to WS
+   - On incoming messages:
+     * If JSON with transcript → append to transcript area.
+     * If binary audio (assistant) → play via AudioContext (decode PCM16) so it sounds natural.
+   - Provide a text box to send typed messages over the same WS for mixed-mode chat.
+   - If WS drops, show a toast and allow reconnect.
+
+Security
+- Only allow same-origin WS; no secrets exposed to the client (the server does the OpenAI connection).
+- Limit session to ~5 minutes and max concurrent connections to prevent abuse.
+
+Fallback
+- If Realtime path errors, the page should fall back to POST /api/ask with the typed input and use speechSynthesis to speak the reply.
+
+Docs
+- Update README.md with:
+  * How to run realtime: open /realtime.html, click Start, speak in EN/ES, hear immediate responses.
+  * Env vars needed, and note that credits are consumed by Realtime tokens and audio generation.
+
+Acceptance tests
+- Health check: navigate to /realtime.html, click Start, say “Necesito un pediatra en el Bronx que hable español.”
+  Expect: instant partial transcript in Spanish, assistant replies spoken back in Spanish using usted, and a short text summary appears with 1–3 suggested options (if tools are enabled) OR at least empathetic guidance if the model can’t fetch tools on the realtime channel.
+- English test: “I need food assistance near Queens.”
+  Expect: live transcript + spoken reply in English with next steps and a gentle proactive nudge.
+- Drop the connection and reconnect; confirm it recovers cleanly.
+
+Nice to have (if quick)
+- Add a “Use my location” button to send {type:"session.update", session:{metadata:{lat,lng}}} so the model can bias responses by proximity, while /api/ask remains the authoritative tool call path.
