@@ -1,76 +1,241 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { Router } from "express";
 import cors from "cors";
 import { storage } from "./storage";
 import { insertServerLogSchema } from "@shared/schema";
+import { ZodError } from "zod";
+import { config, isDevelopment } from "./config";
+
+// Async error wrapper utility
+const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+
+// Custom error class for application errors
+class AppError extends Error {
+  public statusCode: number;
+  public isOperational: boolean;
+
+  constructor(message: string, statusCode: number = 500) {
+    super(message);
+    this.statusCode = statusCode;
+    this.isOperational = true;
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+// Error logging utility
+const logError = (error: Error, req?: Request) => {
+  const timestamp = new Date().toISOString();
+  const method = req?.method || 'Unknown';
+  const path = req?.path || 'Unknown';
+  const ip = req?.ip || 'Unknown';
+  
+  console.error(`[${timestamp}] ERROR: ${error.message}`);
+  console.error(`Request: ${method} ${path} from ${ip}`);
+  console.error(`Stack: ${error.stack}`);
+};
+
+// Global error handling middleware
+const errorHandler = (error: Error, req: Request, res: Response, next: NextFunction) => {
+  // Log the error
+  logError(error, req);
+
+  // Handle different error types
+  if (error instanceof ZodError) {
+    return res.status(400).json({
+      success: false,
+      error: "Validation error",
+      details: error.errors.map(err => ({
+        field: err.path.join('.'),
+        message: err.message
+      }))
+    });
+  }
+
+  if (error instanceof AppError) {
+    return res.status(error.statusCode).json({
+      success: false,
+      error: error.message,
+      ...(isDevelopment() && { stack: error.stack })
+    });
+  }
+
+  // Default error response
+  res.status(500).json({
+    success: false,
+    error: isDevelopment() 
+      ? error.message 
+      : "Internal server error",
+    ...(isDevelopment() && { stack: error.stack })
+  });
+};
+
+// 404 handler
+const notFoundHandler = (req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: `Route ${req.method} ${req.path} not found`
+  });
+};
+
+// Request logging middleware
+const requestLogger = (req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+  const timestamp = new Date().toISOString();
+  const userAgent = req.get('User-Agent') || 'Unknown';
+  const ip = req.ip || req.connection.remoteAddress || 'Unknown';
+  
+  // Log request start
+  console.log(`[${timestamp}] REQUEST: ${req.method} ${req.path} from ${ip}`);
+  
+  // Override res.json to capture response data
+  const originalJson = res.json;
+  let responseData: any;
+  
+  res.json = function(data: any) {
+    responseData = data;
+    return originalJson.call(this, data);
+  };
+  
+  res.on('finish', async () => {
+    const duration = Date.now() - start;
+    const endTimestamp = new Date().toISOString();
+    
+    // Log response details
+    console.log(`[${endTimestamp}] RESPONSE: ${req.method} ${req.path} ${res.statusCode} in ${duration}ms`);
+    
+    // Store detailed log in storage for dashboard
+    if (storage && req.path.startsWith('/api/')) {
+      try {
+        await storage.createServerLog({
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode,
+          responseTime: duration
+        });
+      } catch (error) {
+        // Silent error - don't break the request flow
+        console.error('Failed to store request log:', error);
+      }
+    }
+  });
+  
+  next();
+};
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Enable CORS for all routes
   app.use(cors({
-    origin: true, // Allow all origins in development
-    credentials: true
+    origin: config.CORS_ORIGIN === "*" ? true : config.CORS_ORIGIN.split(","),
+    credentials: config.CORS_CREDENTIALS
   }));
 
-  // API Routes
-  app.get("/api/server/config", async (req, res) => {
-    try {
-      const config = await storage.getServerConfig();
-      res.json(config);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch server configuration" });
+  // Add enhanced request logging middleware
+  app.use(requestLogger);
+
+  // API Router Organization
+  const apiRouter = Router();
+  const serverRouter = Router();
+  const healthRouter = Router();
+
+  // Server Management Routes
+  serverRouter.get("/config", asyncHandler(async (req: Request, res: Response) => {
+    const serverConfig = await storage.getServerConfig();
+    if (!serverConfig) {
+      throw new AppError("Server configuration not found", 404);
     }
-  });
+    res.json({ success: true, data: serverConfig });
+  }));
 
-  app.get("/api/server/logs", async (req, res) => {
-    try {
-      const logs = await storage.getServerLogs();
-      res.json(logs.slice(0, 10)); // Return latest 10 logs
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch server logs" });
+  serverRouter.get("/logs", asyncHandler(async (req: Request, res: Response) => {
+    const logs = await storage.getServerLogs();
+    res.json({ success: true, data: logs.slice(0, 10) });
+  }));
+
+  serverRouter.post("/logs", asyncHandler(async (req: Request, res: Response) => {
+    const validatedLog = insertServerLogSchema.parse(req.body);
+    const log = await storage.createServerLog(validatedLog);
+    res.status(201).json({ success: true, data: log });
+  }));
+
+  serverRouter.get("/status", asyncHandler(async (req: Request, res: Response) => {
+    const uptime = process.uptime();
+    const hours = Math.floor(uptime / 3600);
+    const minutes = Math.floor((uptime % 3600) / 60);
+    const uptimeString = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+    
+    // Update uptime in server config
+    const serverConfig = await storage.getServerConfig();
+    if (serverConfig) {
+      await storage.updateServerConfig({
+        ...serverConfig,
+        uptime: uptimeString
+      });
     }
-  });
 
-  app.post("/api/server/logs", async (req, res) => {
-    try {
-      const validatedLog = insertServerLogSchema.parse(req.body);
-      const log = await storage.createServerLog(validatedLog);
-      res.status(201).json(log);
-    } catch (error) {
-      res.status(400).json({ error: "Invalid log data" });
-    }
-  });
-
-  app.get("/api/server/status", async (req, res) => {
-    try {
-      const uptime = process.uptime();
-      const hours = Math.floor(uptime / 3600);
-      const minutes = Math.floor((uptime % 3600) / 60);
-      const uptimeString = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-      
-      // Update uptime in config
-      const config = await storage.getServerConfig();
-      if (config) {
-        await storage.updateServerConfig({
-          ...config,
-          uptime: uptimeString
-        });
-      }
-
-      res.json({
+    res.json({
+      success: true,
+      data: {
         status: "Running",
         uptime: uptimeString,
-        port: process.env.PORT || 5000,
-        environment: process.env.NODE_ENV || "development"
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch server status" });
-    }
+        port: config.PORT,
+        environment: config.NODE_ENV
+      }
+    });
+  }));
+
+  serverRouter.post("/restart", asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, message: "Server restart initiated" });
+    // In a real application, you might implement graceful restart logic here
+  }));
+
+  // Health Check Routes
+  healthRouter.get("/", (req: Request, res: Response) => {
+    res.json({
+      success: true,
+      data: {
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        version: process.version
+      }
+    });
   });
 
-  app.post("/api/server/restart", async (req, res) => {
-    res.json({ message: "Server restart initiated" });
-    // In a real application, you might implement graceful restart logic here
+  healthRouter.get("/ready", (req: Request, res: Response) => {
+    res.json({
+      success: true,
+      data: {
+        status: "ready",
+        timestamp: new Date().toISOString()
+      }
+    });
   });
+
+  healthRouter.get("/live", (req: Request, res: Response) => {
+    res.json({
+      success: true,
+      data: {
+        status: "alive",
+        timestamp: new Date().toISOString()
+      }
+    });
+  });
+
+  // Mount routers
+  apiRouter.use("/server", serverRouter);
+  apiRouter.use("/health", healthRouter);
+  app.use("/api", apiRouter);
+  app.use("/health", healthRouter); // Also mount health directly for k8s compatibility
+
+  // Add 404 handler (must be after all routes)
+  app.use("*", notFoundHandler);
+
+  // Add error handling middleware (must be last)
+  app.use(errorHandler);
 
   const httpServer = createServer(app);
   return httpServer;
