@@ -116,6 +116,12 @@ export function registerRealtime(app: Express, server: Server) {
           };
           
           openaiWS.send(JSON.stringify(sessionConfig));
+          
+          // Notify browser that OpenAI connection is ready
+          browserWS.send(JSON.stringify({
+            type: 'connection.ready',
+            connection_id: connectionId
+          }));
         });
 
         openaiWS.on('message', (data) => {
