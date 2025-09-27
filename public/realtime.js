@@ -55,6 +55,18 @@ class HealthcareVoiceAssistant {
         }
     }
     
+    // Helper function to enable/disable microphone
+    setMicEnabled(enabled) {
+        if (!this.localStream) return;
+        
+        this.micEnabled = enabled;
+        this.localStream.getAudioTracks().forEach(track => {
+            track.enabled = enabled;
+        });
+        
+        console.log(enabled ? 'Microphone enabled' : 'Microphone muted during AI speech');
+    }
+    
     async startVoiceSession() {
         try {
             console.log('Starting voice session with WebRTC...');
@@ -67,7 +79,7 @@ class HealthcareVoiceAssistant {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
-                    sampleRate: 16000
+                    channelCount: 1
                 } 
             });
             console.log('Step 1: Microphone access granted');
@@ -131,6 +143,10 @@ class HealthcareVoiceAssistant {
                 // Store local stream for cleanup
                 this.localStream = stream;
                 
+                // Store microphone control state
+                this.micEnabled = true;
+                this.aiSpeaking = false;
+                
                 // Add local microphone stream
                 stream.getTracks().forEach(track => {
                     console.log('Adding track to peer connection:', track.kind);
@@ -143,6 +159,8 @@ class HealthcareVoiceAssistant {
                     audioEl = document.createElement('audio');
                     audioEl.autoplay = true;
                     audioEl.id = 'remote-audio';
+                    audioEl.volume = 0.7; // Lower volume to help prevent feedback
+                    audioEl.playsInline = true;
                     document.body.appendChild(audioEl);
                 }
                 
@@ -155,9 +173,31 @@ class HealthcareVoiceAssistant {
                 this.pc.ondatachannel = (event) => {
                     console.log('Received data channel from OpenAI:', event.channel.label);
                     const channel = event.channel;
+                    this.controlChannel = channel; // Store for sending session updates
+                    
                     channel.onopen = () => {
                         console.log('OpenAI data channel opened');
+                        
+                        // Send session configuration to pin language and improve settings
+                        const sessionConfig = {
+                            type: 'session.update',
+                            session: {
+                                voice: 'alloy',
+                                instructions: 'Always respond in English, concise, caring. Do not switch languages unless explicitly asked.',
+                                turn_detection: { 
+                                    type: 'server_vad', 
+                                    threshold: 0.6, 
+                                    prefix_padding_ms: 200, 
+                                    silence_duration_ms: 700 
+                                },
+                                modalities: ['text', 'audio']
+                            }
+                        };
+                        
+                        channel.send(JSON.stringify(sessionConfig));
+                        console.log('Sent session configuration to pin English language');
                     };
+                    
                     channel.onmessage = (event) => {
                         console.log('[OpenAI Event]:', event.data);
                         this.handleOpenAIEvent(event.data);
@@ -229,10 +269,18 @@ class HealthcareVoiceAssistant {
                     
                 case 'response.audio_transcript.partial':
                     this.updateTranscript(`Assistant (speaking): ${event.transcript}`, 'assistant-partial');
+                    // Mute microphone during AI speech to prevent feedback (only on first partial)
+                    if (!this.aiSpeaking) {
+                        this.aiSpeaking = true;
+                        this.setMicEnabled(false);
+                    }
                     break;
                     
                 case 'response.audio_transcript.done':
                     this.addMessage(event.transcript, 'assistant');
+                    // Re-enable microphone when AI is done speaking
+                    this.aiSpeaking = false;
+                    this.setMicEnabled(true);
                     break;
                     
                 case 'conversation.item.created':
@@ -241,6 +289,15 @@ class HealthcareVoiceAssistant {
                         if (content && content.text) {
                             this.addMessage(content.text, 'assistant');
                         }
+                    }
+                    break;
+                    
+                case 'response.completed':
+                    // Fallback to re-enable microphone if we missed audio_transcript.done
+                    if (this.aiSpeaking) {
+                        console.log('Re-enabling microphone after response completed');
+                        this.aiSpeaking = false;
+                        this.setMicEnabled(true);
                     }
                     break;
                     
@@ -543,6 +600,11 @@ class HealthcareVoiceAssistant {
         
         // Close any data channels (handled by peer connection closure)
         this.dataChannel = null;
+        this.controlChannel = null;
+        
+        // Reset microphone and AI speaking state
+        this.micEnabled = true;
+        this.aiSpeaking = false;
         
         // Stop local media tracks
         if (this.localStream) {
