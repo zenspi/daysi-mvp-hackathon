@@ -1,0 +1,154 @@
+You are editing my existing project. Make minimal, idempotent edits.
+Goal: get the Start Voice button working by wiring the UI to OpenAI Realtime via ephemeral tokens, add a /api/voice/health check, and surface precise errors (no generic “unavailable”).
+
+0) Prereqs
+
+Ensure @supabase/supabase-js is untouched. Add node-fetch only if needed.
+
+Required env var: OPENAI_API_KEY (server-side only). Create/refresh .env.example.
+
+1) Server routes
+
+Add the following routes (choose framework automatically; for Express put in server.js or similar; for Next.js put in pages/api or app/api):
+
+GET /api/voice/health
+
+If OPENAI_API_KEY is missing → return { ok:false, reason:"missing OPENAI_API_KEY" }.
+
+Try GET https://api.openai.com/v1/models with Authorization: Bearer ${OPENAI_API_KEY}.
+
+Return { ok:true } if 200, else { ok:false, status, reason }.
+
+POST /api/voice/ephemeral
+
+Create an ephemeral Realtime session by POSTing to https://api.openai.com/v1/realtime/sessions with headers:
+
+Authorization: Bearer ${OPENAI_API_KEY}
+
+Content-Type: application/json
+
+OpenAI-Beta: realtime=v1
+
+Body:
+
+{
+  "model": "gpt-4o-realtime-preview",
+  "voice": "verse"
+}
+
+
+Return { client_secret: data.client_secret?.value }. If missing, return 502 with the upstream error text.
+
+2) Client wiring (in realtime.html or its JS)
+
+Replace the current “Start Voice” handler to:
+
+Request mic: navigator.mediaDevices.getUserMedia({ audio:true }).
+
+const r = await fetch('/api/voice/ephemeral', { method:'POST' });
+
+If non-200: show toast with the server error.
+
+Else get const EPHEMERAL = (await r.json()).client_secret;
+
+Create WebRTC PC and attach local mic:
+
+const pc = new RTCPeerConnection();
+const local = await navigator.mediaDevices.getUserMedia({ audio:true });
+local.getTracks().forEach(t => pc.addTrack(t, local));
+const audioEl = document.getElementById('remote-audio') || (() => {
+  const a = document.createElement('audio'); a.autoplay = true; a.id='remote-audio'; document.body.appendChild(a); return a;
+})();
+pc.ontrack = (e) => { audioEl.srcObject = e.streams[0]; };
+const dc = pc.createDataChannel('oai-events');
+dc.onmessage = (e) => console.log('[OAI]', e.data);
+const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+const resp = await fetch('https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${EPHEMERAL}`,
+    'Content-Type': 'application/sdp',
+    'OpenAI-Beta': 'realtime=v1'
+  },
+  body: offer.sdp
+});
+const answer = { type:'answer', sdp: await resp.text() };
+await pc.setRemoteDescription(answer);
+
+
+On Stop, call pc.close() and stop local tracks.
+
+Update the toast/error handler to show specific reasons:
+
+Mic blocked → “Mic permission denied — click the lock icon → Allow microphone.”
+
+401/403 from /api/voice/ephemeral → “OpenAI key invalid or billing issue.”
+
+Network fail → “Network blocked to OpenAI Realtime. Check VPN/Firewall.”
+
+3) Buttons & UX
+
+Wire the Reconnect button to call /api/voice/health; if { ok:false }, show the returned reason/status.
+
+Keep the Use Location button unchanged.
+
+If voice fails, auto-fallback to type chat (don’t crash the page).
+
+4) Express vs Next snippets
+
+Express route bodies (use fetch or axios):
+
+app.get('/api/voice/health', async (req,res) => {
+  try{
+    if(!process.env.OPENAI_API_KEY) return res.json({ ok:false, reason:'missing OPENAI_API_KEY' });
+    const r = await fetch('https://api.openai.com/v1/models', { headers:{ Authorization:`Bearer ${process.env.OPENAI_API_KEY}` }});
+    return res.json({ ok: r.ok, status: r.status, reason: r.ok ? null : await r.text() });
+  }catch(e){ res.status(500).json({ ok:false, reason: e.message }); }
+});
+app.post('/api/voice/ephemeral', async (req,res) => {
+  try{
+    const r = await fetch('https://api.openai.com/v1/realtime/sessions', {
+      method:'POST',
+      headers:{
+        Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type':'application/json',
+        'OpenAI-Beta':'realtime=v1'
+      },
+      body: JSON.stringify({ model:'gpt-4o-realtime-preview', voice:'verse' })
+    });
+    const j = await r.json();
+    if(!r.ok) return res.status(502).json({ error: j.error?.message || j });
+    return res.json({ client_secret: j.client_secret?.value });
+  }catch(e){ res.status(502).json({ error: e.message }); }
+});
+
+
+Next.js: create pages/api/voice/health.ts and pages/api/voice/ephemeral.ts with the same logic using Next handlers.
+
+5) Health checklist printed in the editor when done
+
+Files changed (with paths).
+
+How to test:
+
+Visit /api/voice/health → must show { ok:true }.
+
+Reload realtime.html, click Start Voice → you should hear the assistant; if not, the toast must say exactly why.
+
+Do not expose OPENAI_API_KEY to the browser. Only return the ephemeral client_secret.value.
+
+If it still errors after the prompt
+
+Click the lock icon in your browser bar → Allow microphone.
+
+Open /api/voice/health.
+
+If ok:false + 401/403 → fix billing or key.
+
+If 429 → you hit a rate/credit limit.
+
+In DevTools Console, run:
+
+navigator.mediaDevices.getUserMedia({audio:true})
+.then(() => console.log('mic ok'))
+.catch(e => console.log('mic fail:', e.name, e.message));
