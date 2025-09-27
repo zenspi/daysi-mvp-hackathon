@@ -187,17 +187,11 @@ export function registerRealtime(app: Express, server: Server) {
     // Handle browser messages
     browserWS.on('message', async (data) => {
       try {
-        if (!connection.openaiWS) {
-          // Initialize OpenAI connection on first message
-          await initializeOpenAI();
-          if (!connection.openaiWS) return;
-        }
-
-        if (connection.openaiWS.readyState !== WebSocket.OPEN) {
-          console.log(`[REALTIME] OpenAI connection not ready for ${connectionId}, state: ${connection.openaiWS.readyState}`);
+        if (!connection.openaiWS || connection.openaiWS.readyState !== WebSocket.OPEN) {
+          console.log(`[REALTIME] OpenAI connection not available for ${connectionId}`);
           browserWS.send(JSON.stringify({ 
-            type: 'status', 
-            message: 'Connecting to voice services...' 
+            type: 'error', 
+            message: 'Voice services temporarily unavailable' 
           }));
           return;
         }
@@ -246,11 +240,25 @@ export function registerRealtime(app: Express, server: Server) {
       cleanup();
     });
 
-    // Send ready message to browser
-    browserWS.send(JSON.stringify({ 
-      type: 'connection.ready', 
-      connection_id: connectionId 
-    }));
+    // Initialize OpenAI connection immediately
+    console.log(`[REALTIME] Initializing OpenAI connection for ${connectionId}`);
+    await initializeOpenAI();
+    
+    if (connection.openaiWS && connection.openaiWS.readyState === WebSocket.OPEN) {
+      console.log(`[REALTIME] OpenAI ready, sending connection.ready to browser ${connectionId}`);
+      // Send ready message to browser only after OpenAI is connected
+      browserWS.send(JSON.stringify({ 
+        type: 'connection.ready', 
+        connection_id: connectionId 
+      }));
+    } else {
+      console.error(`[REALTIME] Failed to establish OpenAI connection for ${connectionId}`);
+      browserWS.send(JSON.stringify({ 
+        type: 'error', 
+        message: 'Voice services unavailable' 
+      }));
+      browserWS.close();
+    }
   });
 
   // Cleanup old connections periodically
