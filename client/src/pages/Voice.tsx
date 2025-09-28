@@ -36,14 +36,21 @@ export default function Voice() {
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioContextRef = useRef<{ audioContext: AudioContext, processor: ScriptProcessorNode, source: MediaStreamAudioSourceNode } | null>(null);
   const pendingStartRef = useRef(false);
   const cachedStreamRef = useRef<MediaStream | null>(null);
 
-  // Auto-start when ready if user tapped early
+  // Auto-start when ready if user tapped early - debounced to prevent double starts
   useEffect(() => {
     if (connectionStatus === 'ready' && pendingStartRef.current && !isRecording) {
       pendingStartRef.current = false;
-      startVoiceSession();
+      // Debounce to prevent double starts
+      const timeoutId = setTimeout(() => {
+        if (!isRecording) {
+          startVoiceSession();
+        }
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
   }, [connectionStatus, isRecording]);
 
@@ -216,33 +223,66 @@ export default function Voice() {
     try {
       const stream = await getMicrophoneStream();
 
-      // Skip audio streaming for now - use text-only mode
-      // const mediaRecorder = new MediaRecorder(stream, {
-      //   mimeType: 'audio/webm;codecs=opus'
-      // });
-      // mediaRecorderRef.current = mediaRecorder;
+      // Create AudioContext for PCM16 audio processing
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+        sampleRate: 24000 // 24kHz as required by OpenAI Realtime API
+      });
 
-      // mediaRecorder.ondataavailable = (event) => {
-      //   if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
-      //     wsRef.current.send(event.data);
-      //   }
-      // };
+      const source = audioContext.createMediaStreamSource(stream);
+      
+      // Create audio worklet for PCM16 conversion
+      try {
+        // Create a simple ScriptProcessorNode for PCM16 conversion
+        const processor = audioContext.createScriptProcessor(2048, 1, 1);
+        
+        processor.onaudioprocess = (event) => {
+          if (wsRef.current?.readyState !== WebSocket.OPEN) return;
 
-      // mediaRecorder.start(100);
+          const inputBuffer = event.inputBuffer;
+          const inputData = inputBuffer.getChannelData(0); // Mono audio
+          
+          // Convert Float32 audio to Int16 PCM
+          const pcm16Buffer = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) {
+            const sample = Math.max(-1, Math.min(1, inputData[i]));
+            pcm16Buffer[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+          }
+          
+          // Send PCM16 data as binary to WebSocket
+          wsRef.current.send(pcm16Buffer.buffer);
+        };
+
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        
+        // Store references for cleanup
+        audioContextRef.current = { audioContext, processor, source };
+        
+      } catch (error) {
+        console.error('[VOICE] AudioWorklet creation failed:', error);
+        throw error;
+      }
+
       setIsRecording(true);
       setVoiceStatus('listening');
 
-      // Send session creation with correct format
+      // Send session creation with audio modality
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         console.log('[VOICE] Sending session.update...');
         wsRef.current.send(JSON.stringify({
           event_id: `session_${Date.now()}`,
           type: 'session.update',
           session: {
-            modalities: ['text'],
+            modalities: ['text', 'audio'],
             instructions: `You are Daysi, a helpful healthcare assistant. Keep responses brief and helpful.`,
+            voice: 'alloy',
+            input_audio_format: 'pcm16',
+            output_audio_format: 'pcm16',
             input_audio_transcription: {
               model: 'whisper-1'
+            },
+            turn_detection: {
+              type: 'server_vad'
             }
           }
         }));
@@ -265,9 +305,19 @@ export default function Voice() {
 
   // Stop voice session
   const stopVoiceSession = useCallback(() => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current = null;
+    if (audioContextRef.current) {
+      const { audioContext, processor, source } = audioContextRef.current;
+      
+      // Clean up AudioContext and nodes
+      try {
+        source.disconnect();
+        processor.disconnect();
+        audioContext.close();
+      } catch (error) {
+        console.error('[VOICE] Cleanup error:', error);
+      }
+      
+      audioContextRef.current = null;
     }
     
     // Don't stop the cached stream - keep it for reuse
@@ -322,13 +372,17 @@ export default function Voice() {
     };
   }, [connectWebSocket, checkMicrophonePermission]);
 
-  // Handle orb click
+  // Handle orb click - debounced to prevent multiple rapid clicks
   const handleOrbClick = useCallback(() => {
     if (isRecording) {
       stopVoiceSession();
-    } else if (connectionStatus === 'ready') {
+    } else if (connectionStatus === 'ready' && !pendingStartRef.current) {
+      // Send start signal to server first
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'start' }));
+      }
       startVoiceSession();
-    } else {
+    } else if (!pendingStartRef.current) {
       // User tapped early - connect and mark for auto-start
       pendingStartRef.current = true;
       connectWebSocket();

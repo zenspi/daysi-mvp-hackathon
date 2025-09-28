@@ -237,14 +237,18 @@ export function registerRealtime(app: Express, server: Server) {
           }
 
           // Handle special browser-specific messages
-          if (message.type === 'session.update') {
-            console.log(`[REALTIME] Forwarding session update for ${connectionId}`);
+          if (message.type === 'start') {
+            console.log(`[REALTIME] Start message received for ${connectionId}`);
+            // Initialize OpenAI connection if not already done
+            if (!connection.openaiWS) {
+              console.log(`[REALTIME] Initializing OpenAI connection for ${connectionId}`);
+              await initializeOpenAI();
+            }
+            return; // Don't forward start message to OpenAI
           }
 
-          // Initialize OpenAI connection if not already done and this is a voice request
-          if (message.type === 'session.update' && !connection.openaiWS) {
-            console.log(`[REALTIME] Initializing OpenAI connection on demand for ${connectionId}`);
-            await initializeOpenAI();
+          if (message.type === 'session.update') {
+            console.log(`[REALTIME] Forwarding session update for ${connectionId}`);
           }
 
           // Forward to OpenAI only if connected
@@ -269,14 +273,20 @@ export function registerRealtime(app: Express, server: Server) {
       cleanup();
     });
 
-    // Don't initialize OpenAI connection immediately - wait for explicit request
-    console.log(`[REALTIME] Browser connected, waiting for explicit OpenAI initialization for ${connectionId}`);
+    // Initialize OpenAI connection immediately and then send ready when actually ready
+    console.log(`[REALTIME] Browser connected, initializing OpenAI for ${connectionId}`);
     
-    // Send ready message to browser without OpenAI connection
-    browserWS.send(JSON.stringify({ 
-      type: 'connection.ready', 
-      connection_id: connectionId 
-    }));
+    // Initialize OpenAI connection before sending ready
+    await initializeOpenAI();
+    
+    // Only send ready after OpenAI is connected
+    if (connection.openaiWS && connection.openaiWS.readyState === WebSocket.OPEN) {
+      browserWS.send(JSON.stringify({ 
+        type: 'connection.ready', 
+        connection_id: connectionId 
+      }));
+      console.log(`[REALTIME] Connection ready sent for ${connectionId}`);
+    }
   });
 
   // Cleanup old connections periodically
