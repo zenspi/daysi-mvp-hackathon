@@ -63,6 +63,76 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Handle scheduling context from provider search
+  useEffect(() => {
+    const scheduleContext = sessionStorage.getItem('scheduleContext');
+    if (scheduleContext) {
+      try {
+        const context = JSON.parse(scheduleContext);
+        if (context.action === 'schedule_appointment' && context.provider) {
+          const provider = context.provider;
+          const schedulingMessage = `I'd like to request an appointment with ${provider.name} (${provider.specialty}) at ${provider.address}. They speak ${provider.languages?.join(', ')} and accept ${provider.insurance?.join(', ')}. Their phone number is ${provider.phone}. Can you help me schedule an appointment?`;
+          
+          // Auto-send the scheduling request
+          setTimeout(() => {
+            setInputText(schedulingMessage);
+            setTimeout(async () => {
+              // Create a temporary message for the scheduling request
+              const userMessage = {
+                id: Date.now().toString(),
+                type: 'user' as const,
+                content: schedulingMessage,
+                timestamp: new Date()
+              };
+              
+              setMessages(prev => [...prev, userMessage]);
+              setInputText("");
+              setIsLoading(true);
+
+              try {
+                const response = await fetch('/api/ask', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    message: schedulingMessage,
+                    lang: language,
+                    pulseConsent: false
+                  })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                  const assistantMessage = {
+                    id: (Date.now() + 1).toString(),
+                    type: 'assistant' as const,
+                    content: data.reply,
+                    timestamp: new Date(),
+                    intent: data.intent,
+                    results: data.results || []
+                  };
+
+                  setMessages(prev => [...prev, assistantMessage]);
+                }
+              } catch (error) {
+                console.error('[CHAT] Error sending scheduling message:', error);
+              } finally {
+                setIsLoading(false);
+              }
+            }, 500);
+          }, 1000);
+          
+          // Clear the context to prevent re-sending
+          sessionStorage.removeItem('scheduleContext');
+        }
+      } catch (error) {
+        console.error('[CHAT] Error processing schedule context:', error);
+      }
+    }
+  }, []);
+
   // Request location permission
   const requestLocation = async () => {
     try {

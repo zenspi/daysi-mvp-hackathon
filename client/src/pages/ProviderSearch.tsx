@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, MapPin, Phone, Users, Clock, Stethoscope, Filter, X, ExternalLink, Calendar } from 'lucide-react';
+import { Search, MapPin, Phone, Users, Clock, Stethoscope, Filter, X, ExternalLink, MessageCircle } from 'lucide-react';
 import { useI18n } from '@/contexts/I18nContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -173,29 +173,33 @@ export default function ProviderSearch() {
     });
   }, []);
 
-  // Handle scheduling appointment
-  const handleScheduleAppointment = useCallback((provider: Provider) => {
-    // Enhanced scheduling with better UX
-    const phoneNumber = provider.phone.replace(/\D/g, ''); // Clean phone number
-    const bookingUrl = `https://www.zocdoc.com/search?filters=%5B%5D&insurances=%5B%5D&query=${encodeURIComponent(provider.name)}&address=${encodeURIComponent(provider.address)}`;
+  // Handle appointment request through Ask Daysi
+  const handleRequestAppointment = useCallback((provider: Provider) => {
+    // Navigate to Ask Daysi with provider context
+    const providerContext = {
+      name: provider.name,
+      specialty: provider.specialty,
+      phone: provider.phone,
+      address: provider.address,
+      languages: provider.languages,
+      insurance: provider.insurance_accepted
+    };
     
-    // Open booking URL in new tab
-    window.open(bookingUrl, '_blank');
+    // Store provider context for Ask Daysi
+    sessionStorage.setItem('scheduleContext', JSON.stringify({
+      action: 'schedule_appointment',
+      provider: providerContext,
+      timestamp: new Date().toISOString()
+    }));
+    
+    // Navigate to Ask Daysi chat
+    window.location.href = '/chat';
     
     toast({
-      title: '📅 Scheduling Options Opened',
-      description: `Book online with ${provider.name} or call ${provider.phone} directly`,
-      duration: 6000, // Show longer for important scheduling info
+      title: '💬 Connecting with Daysi',
+      description: `I'll help you request an appointment with ${provider.name}`,
+      duration: 4000,
     });
-    
-    // Also provide direct call option as backup
-    setTimeout(() => {
-      toast({
-        title: '💡 Quick Tip',
-        description: `You can also call ${provider.name} directly at ${provider.phone} for faster booking`,
-        duration: 5000,
-      });
-    }, 2000);
   }, [toast]);
 
   // Update filter
@@ -611,11 +615,11 @@ export default function ProviderSearch() {
                           <Button 
                             variant="outline"
                             size="sm"
-                            onClick={() => handleScheduleAppointment(provider)}
+                            onClick={() => handleRequestAppointment(provider)}
                             data-testid={`provider-schedule-${provider.id}`}
                           >
-                            <Calendar className="h-3 w-3 mr-1" />
-                            Schedule
+                            <MessageCircle className="h-3 w-3 mr-1" />
+                            Ask Daysi
                           </Button>
                           
                           <Button 
