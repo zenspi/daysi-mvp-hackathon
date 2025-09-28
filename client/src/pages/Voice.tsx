@@ -31,11 +31,13 @@ export default function Voice() {
   const [useLocation, setUseLocation] = useState(false);
   const [language, setLanguage] = useState('en');
   const [hasAudioSupport] = useState(() => !!navigator.mediaDevices?.getUserMedia);
+  const [microphonePermission, setMicrophonePermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
 
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const pendingStartRef = useRef(false);
+  const cachedStreamRef = useRef<MediaStream | null>(null);
 
   // Auto-start when ready if user tapped early
   useEffect(() => {
@@ -167,6 +169,42 @@ export default function Voice() {
     }
   }, [toast, language, isRecording]);
 
+  // Check microphone permissions
+  const checkMicrophonePermission = useCallback(async () => {
+    if (navigator.permissions) {
+      try {
+        const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        setMicrophonePermission(result.state);
+        result.onchange = () => setMicrophonePermission(result.state);
+      } catch (error) {
+        console.log('[VOICE] Permissions API not supported');
+      }
+    }
+  }, []);
+
+  // Get microphone stream (cached)
+  const getMicrophoneStream = useCallback(async () => {
+    if (cachedStreamRef.current && cachedStreamRef.current.active) {
+      console.log('[VOICE] Using cached microphone stream');
+      return cachedStreamRef.current;
+    }
+
+    console.log('[VOICE] Requesting new microphone access...');
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: { 
+        sampleRate: 24000,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true
+      } 
+    });
+    console.log('[VOICE] Microphone access granted');
+    
+    cachedStreamRef.current = stream;
+    setMicrophonePermission('granted');
+    return stream;
+  }, []);
+
   // Start voice session
   const startVoiceSession = useCallback(async () => {
     if (!hasAudioSupport || connectionStatus !== 'ready' || isRecording) {
@@ -176,16 +214,7 @@ export default function Voice() {
 
     console.log('[VOICE] Starting voice session...');
     try {
-      console.log('[VOICE] Requesting microphone access...');
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: { 
-          sampleRate: 24000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true
-        } 
-      });
-      console.log('[VOICE] Microphone access granted');
+      const stream = await getMicrophoneStream();
 
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus'
@@ -202,13 +231,14 @@ export default function Voice() {
       setIsRecording(true);
       setVoiceStatus('listening');
 
-      // Send session creation
+      // Send session creation with simplified config
       if (wsRef.current?.readyState === WebSocket.OPEN) {
+        console.log('[VOICE] Sending session.create...');
         wsRef.current.send(JSON.stringify({
-          type: 'session.create',
+          type: 'session.update',
           session: {
             modalities: ['text', 'audio'],
-            instructions: `You are Daysi, a helpful healthcare assistant. Provide personalized healthcare guidance and help find providers and resources. Current language: ${language}${userLocation ? `, User location: ${userLocation.lat}, ${userLocation.lng}` : ''}. Keep responses concise and helpful.`,
+            instructions: `You are Daysi, a helpful healthcare assistant. Keep responses brief and helpful.`,
             voice: 'alloy',
             input_audio_format: 'pcm16',
             output_audio_format: 'pcm16',
@@ -219,14 +249,11 @@ export default function Voice() {
               type: 'server_vad',
               threshold: 0.5,
               prefix_padding_ms: 300,
-              silence_duration_ms: 500
-            },
-            tools: [],
-            tool_choice: 'auto',
-            temperature: 0.8,
-            max_response_output_tokens: 4096
+              silence_duration_ms: 1000
+            }
           }
         }));
+        console.log('[VOICE] Session creation sent');
       }
 
     } catch (error) {
@@ -241,16 +268,16 @@ export default function Voice() {
         variant: 'destructive'
       });
     }
-  }, [hasAudioSupport, connectionStatus, isRecording, language, userLocation, toast]);
+  }, [hasAudioSupport, connectionStatus, isRecording, getMicrophoneStream, toast]);
 
   // Stop voice session
   const stopVoiceSession = useCallback(() => {
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream?.getTracks().forEach(track => track.stop());
       mediaRecorderRef.current = null;
     }
     
+    // Don't stop the cached stream - keep it for reuse
     setIsRecording(false);
     setVoiceStatus('idle');
     setCurrentTranscript('');
@@ -266,6 +293,9 @@ export default function Voice() {
 
   // Initialize on mount - auto-connect and auto-request location
   useEffect(() => {
+    // Check microphone permissions on load
+    checkMicrophonePermission();
+    
     // Auto-request location silently in background
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -293,8 +323,11 @@ export default function Voice() {
       if (mediaRecorderRef.current && isRecording) {
         mediaRecorderRef.current.stop();
       }
+      if (cachedStreamRef.current) {
+        cachedStreamRef.current.getTracks().forEach(track => track.stop());
+      }
     };
-  }, [connectWebSocket]);
+  }, [connectWebSocket, checkMicrophonePermission]);
 
   // Handle orb click
   const handleOrbClick = useCallback(() => {
