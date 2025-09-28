@@ -379,8 +379,26 @@ export default function Voice() {
     );
   }, [toast, t]);
 
-  // Initialize on mount
+  // Initialize on mount - auto-connect and auto-request location
   useEffect(() => {
+    // Auto-request location silently in background
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const location = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+          setUserLocation(location);
+          setUseLocation(true);
+        },
+        (error) => {
+          console.log('[VOICE] Location not available, continuing without it');
+        }
+      );
+    }
+    
+    // Auto-connect to voice services
     connectWebSocket();
     
     return () => {
@@ -391,7 +409,7 @@ export default function Voice() {
         mediaRecorderRef.current.stop();
       }
     };
-  }, [connectWebSocket, isRecording]);
+  }, [connectWebSocket]);
 
   // Get connection status display
   const getConnectionDisplay = () => {
@@ -411,62 +429,15 @@ export default function Voice() {
   const ConnectionIcon = connectionDisplay.icon;
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="p-4 border-b bg-white dark:bg-gray-900">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="voice-title">
-              {t('voice.title')}
-            </h1>
-            <p className="text-sm text-muted-foreground" data-testid="voice-subtitle">
-              {t('voice.subtitle')}
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <ConnectionIcon className={`h-5 w-5 ${connectionDisplay.color} ${connectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
-            <span className={`text-xs ${connectionDisplay.color}`} data-testid="connection-status">
-              {connectionDisplay.text}
-            </span>
-          </div>
-        </div>
-        
-        {/* Controls */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Select value={language} onValueChange={setLanguage}>
-            <SelectTrigger className="w-[140px]" data-testid="language-selector">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="en">English</SelectItem>
-              <SelectItem value="es">Español</SelectItem>
-            </SelectContent>
-          </Select>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={requestLocation}
-            disabled={useLocation}
-            data-testid="button-location"
-          >
-            <MapPin className="h-4 w-4 mr-1" />
-            {useLocation ? '✓ Location' : t('voice.useLocation')}
-          </Button>
-          
-          {connectionStatus !== 'connected' && (
-            <Button
-              variant="outline" 
-              size="sm"
-              onClick={connectWebSocket}
-              data-testid="button-reconnect"
-            >
-              <RefreshCw className="h-4 w-4 mr-1" />
-              {t('voice.reconnect')}
-            </Button>
-          )}
-        </div>
+    <div className="flex flex-col h-full max-w-4xl mx-auto bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+      {/* Simple Header */}
+      <div className="p-6 text-center">
+        <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2" data-testid="voice-title">
+          Ask Daysi
+        </h1>
+        <p className="text-gray-600 dark:text-gray-300" data-testid="voice-subtitle">
+          Speak naturally to get personalized healthcare guidance
+        </p>
       </div>
 
       {/* Main Content */}
