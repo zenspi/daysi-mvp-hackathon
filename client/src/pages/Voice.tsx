@@ -170,10 +170,13 @@ export default function Voice() {
   // Start voice session
   const startVoiceSession = useCallback(async () => {
     if (!hasAudioSupport || connectionStatus !== 'ready' || isRecording) {
+      console.log('[VOICE] Cannot start:', { hasAudioSupport, connectionStatus, isRecording });
       return;
     }
 
+    console.log('[VOICE] Starting voice session...');
     try {
+      console.log('[VOICE] Requesting microphone access...');
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: { 
           sampleRate: 24000,
@@ -182,6 +185,7 @@ export default function Voice() {
           noiseSuppression: true
         } 
       });
+      console.log('[VOICE] Microphone access granted');
 
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus'
@@ -227,6 +231,10 @@ export default function Voice() {
 
     } catch (error) {
       console.error('[VOICE] Microphone access failed:', error);
+      setVoiceStatus('idle');
+      setIsRecording(false);
+      
+      // Don't close WebSocket connection on mic failure
       toast({
         title: 'Microphone Access Required',
         description: 'Please allow microphone access to use voice features',
