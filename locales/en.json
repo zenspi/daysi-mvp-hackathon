@@ -29,7 +29,41 @@
     "close": "Close",
     "directions": "Directions",
     "claimProfile": "Claim this profile",
-    "instantVerify": "Instant verify (demo)"
+    "instantVerify": "Instant verify (demo)",
+    "login": "Sign In",
+    "logout": "Sign Out",
+    "verifyCode": "Verify Code"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign In to Ask Daysi",
+      "subtitle": "Enter your phone number or email to get started",
+      "emailLabel": "Email Address",
+      "phoneLabel": "Phone Number",
+      "emailPlaceholder": "your@email.com",
+      "phonePlaceholder": "(555) 123-4567",
+      "codeLabel": "Verification Code",
+      "codePlaceholder": "Enter 6-digit code",
+      "sendingCode": "Sending code...",
+      "codeSent": "Code sent! Check your messages.",
+      "verifying": "Verifying...",
+      "resendCode": "Resend code",
+      "changeContact": "Use different contact"
+    },
+    "profile": {
+      "title": "Your Profile",
+      "personalInfo": "Personal Information",
+      "nameLabel": "Full Name",
+      "emailLabel": "Email",
+      "phoneLabel": "Phone",
+      "languageLabel": "Preferred Language",
+      "locationInfo": "Location Information",
+      "boroughLabel": "Borough",
+      "zipLabel": "ZIP Code",
+      "updateLocation": "Update my location",
+      "updating": "Updating...",
+      "updated": "Profile updated successfully!"
+    }
   },
   "home": {
     "welcome": "Welcome to Ask Daysi",
@@ -79,45 +113,8 @@
       "noResults": "No resources found matching your criteria"
     }
   },
-  "auth": {
-    "login": {
-      "title": "Sign In",
-      "subtitle": "Enter your phone number or email to continue",
-      "tabs": {
-        "phone": "Phone",
-        "email": "Email"
-      },
-      "placeholders": {
-        "phone": "Enter your phone number",
-        "email": "Enter your email address",
-        "code": "Enter 6-digit code"
-      },
-      "codeSent": "Code sent to",
-      "codeInstructions": "Enter the verification code we sent you",
-      "resendCode": "Didn't receive it? Resend code",
-      "invalidCode": "Invalid code. Please try again."
-    }
-  },
-  "profile": {
-    "title": "Profile",
-    "subtitle": "Manage your account and preferences",
-    "personalInfo": "Personal Information",
-    "preferences": "Preferences",
-    "privacy": "Privacy & Consent",
-    "fields": {
-      "name": "Full Name",
-      "email": "Email",
-      "phone": "Phone",
-      "language": "Preferred Language",
-      "borough": "Borough",
-      "zipCode": "Zip Code"
-    },
-    "consent": {
-      "shareLocation": "Share location for nearby recommendations",
-      "receiveSms": "Receive SMS updates and reminders",
-      "receiveEmail": "Receive email updates"
-    },
-    "signOut": "Sign Out"
+  "common": {
+    "member_since": "Member since"
   },
   "admin": {
     "title": "Admin Dashboard",

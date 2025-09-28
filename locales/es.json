@@ -29,7 +29,44 @@
     "close": "Cerrar",
     "directions": "Direcciones",
     "claimProfile": "Reclamar este perfil",
-    "instantVerify": "Verificación instantánea (demo)"
+    "instantVerify": "Verificación instantánea (demo)",
+    "login": "Iniciar Sesión",
+    "logout": "Cerrar Sesión",
+    "verifyCode": "Verificar Código"
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar Sesión en Ask Daysi",
+      "subtitle": "Ingrese su número de teléfono o correo electrónico para comenzar",
+      "emailLabel": "Correo Electrónico",
+      "phoneLabel": "Número de Teléfono",
+      "emailPlaceholder": "su@correo.com",
+      "phonePlaceholder": "(555) 123-4567",
+      "codeLabel": "Código de Verificación",
+      "codePlaceholder": "Ingrese código de 6 dígitos",
+      "sendingCode": "Enviando código...",
+      "codeSent": "¡Código enviado! Revise sus mensajes.",
+      "verifying": "Verificando...",
+      "resendCode": "Reenviar código",
+      "changeContact": "Usar contacto diferente"
+    },
+    "profile": {
+      "title": "Su Perfil",
+      "personalInfo": "Información Personal",
+      "nameLabel": "Nombre Completo",
+      "emailLabel": "Correo Electrónico",
+      "phoneLabel": "Teléfono",
+      "languageLabel": "Idioma Preferido",
+      "locationInfo": "Información de Ubicación",
+      "boroughLabel": "Distrito",
+      "zipLabel": "Código Postal",
+      "updateLocation": "Actualizar mi ubicación",
+      "updating": "Actualizando...",
+      "updated": "¡Perfil actualizado exitosamente!"
+    }
+  },
+  "common": {
+    "member_since": "Miembro desde"
   },
   "home": {
     "welcome": "Bienvenido/a a Ask Daysi",
@@ -78,46 +115,6 @@
       "category": "Categoría",
       "noResults": "No se encontraron recursos que coincidan con sus criterios"
     }
-  },
-  "auth": {
-    "login": {
-      "title": "Iniciar Sesión",
-      "subtitle": "Ingrese su número de teléfono o correo electrónico para continuar",
-      "tabs": {
-        "phone": "Teléfono",
-        "email": "Correo"
-      },
-      "placeholders": {
-        "phone": "Ingrese su número de teléfono",
-        "email": "Ingrese su dirección de correo electrónico",
-        "code": "Ingrese el código de 6 dígitos"
-      },
-      "codeSent": "Código enviado a",
-      "codeInstructions": "Ingrese el código de verificación que le enviamos",
-      "resendCode": "¿No lo recibió? Reenviar código",
-      "invalidCode": "Código inválido. Por favor, inténtelo de nuevo."
-    }
-  },
-  "profile": {
-    "title": "Perfil",
-    "subtitle": "Administre su cuenta y preferencias",
-    "personalInfo": "Información Personal",
-    "preferences": "Preferencias",
-    "privacy": "Privacidad y Consentimiento",
-    "fields": {
-      "name": "Nombre Completo",
-      "email": "Correo Electrónico",
-      "phone": "Teléfono",
-      "language": "Idioma Preferido",
-      "borough": "Distrito",
-      "zipCode": "Código Postal"
-    },
-    "consent": {
-      "shareLocation": "Compartir ubicación para recomendaciones cercanas",
-      "receiveSms": "Recibir actualizaciones y recordatorios por SMS",
-      "receiveEmail": "Recibir actualizaciones por correo electrónico"
-    },
-    "signOut": "Cerrar Sesión"
   },
   "admin": {
     "title": "Panel de Administración",
