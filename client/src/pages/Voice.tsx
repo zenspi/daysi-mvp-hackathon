@@ -390,10 +390,12 @@ export default function Voice() {
             pcm16Buffer[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
           }
           
-          // Send PCM16 data to WebSocket as OpenAI expects
+          // Send PCM16 data to WebSocket as base64 (much more efficient)
+          const uint8Array = new Uint8Array(pcm16Buffer.buffer);
+          const base64Audio = btoa(String.fromCharCode(...uint8Array));
           const audioData = {
             type: 'input_audio_buffer.append',
-            audio: Array.from(new Uint8Array(pcm16Buffer.buffer)).map(b => b.toString()).join(',')
+            audio: base64Audio
           };
           wsRef.current.send(JSON.stringify(audioData));
         };

@@ -343,6 +343,22 @@ export function registerRealtime(app: Express, server: Server) {
             return; // Don't forward start/reinit message to OpenAI
           }
 
+          // Handle audio data that comes as JSON with base64 audio
+          if (message.type === 'input_audio_buffer.append' && message.audio) {
+            if (!connection.openaiWS || connection.openaiWS.readyState !== WebSocket.OPEN) {
+              console.log(`[REALTIME] OpenAI connection not available for audio data from ${connectionId}`);
+              browserWS.send(JSON.stringify({ 
+                type: 'error', 
+                message: 'Voice services temporarily unavailable' 
+              }));
+              return;
+            }
+            
+            // Forward audio data directly to OpenAI (it's already in the correct format)
+            connection.openaiWS.send(JSON.stringify(message));
+            return;
+          }
+
           // All other JSON messages require OpenAI connection
           if (!connection.openaiWS || connection.openaiWS.readyState !== WebSocket.OPEN) {
             console.log(`[REALTIME] OpenAI connection not available for message from ${connectionId}`);
