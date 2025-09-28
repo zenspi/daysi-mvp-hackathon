@@ -394,7 +394,7 @@ npm run test         # Run tests
 
 ## 🤝 Contributing
 
-This project is designed for hackathons and rapid development:
+This project is designed for rapid development:
 
 1. Fork the repository
 2. Create feature branch: `git checkout -b feature/new-feature`
@@ -410,7 +410,7 @@ This project is designed for hackathons and rapid development:
 
 ## 📄 License
 
-MIT License - perfect for hackathons and open source projects.
+MIT License - .
 
 ## 🆘 Support
 
@@ -426,12 +426,6 @@ MIT License - perfect for hackathons and open source projects.
 - Test endpoints with curl
 - Verify environment variables
 
-### Hackathon Tips
-- Use sample data for demos
-- Set up health monitoring
-- Test all endpoints before presenting
-- Prepare backup deployment options
 
 ---
 
-**Built with ❤️ for hackathons and rapid healthcare innovation**
