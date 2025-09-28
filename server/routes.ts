@@ -1515,13 +1515,13 @@ If emergency mentioned, set urgency to "emergency". If user asks to call/connect
         step: 'greeting'
       });
       
-      // Create TwiML response with greeting and speech gathering
+      // Create TwiML response with shorter greeting and language options
       const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Joanna" language="en-US">Hello! You've reached Ask Daysi at 8 6 6, 3 8 6, 3 0 9 5 - your healthcare companion.</Say>
+    <Say voice="Polly.Joanna" language="en-US">Hello! You've reached Ask Daysi, your healthcare companion.</Say>
     <Pause length="1"/>
-    <Say voice="Polly.Joanna" language="en-US">I can help you find healthcare providers and answer health questions. Tell me what you need.</Say>
-    <Gather input="speech" action="/twilio/voice/handle" method="POST" language="en-US" timeout="5" speechTimeout="2">
+    <Say voice="Polly.Joanna" language="en-US">For English, say your health need now. Para español, presiona dos o di "español".</Say>
+    <Gather input="speech dtmf" action="/twilio/voice/handle" method="POST" language="en-US" timeout="5" speechTimeout="2" numDigits="1">
         <Say voice="Polly.Joanna" language="en-US">Go ahead, I'm listening.</Say>
     </Gather>
     <Say voice="Polly.Joanna" language="en-US">Sorry, I didn't catch that. Let me try again.</Say>
@@ -1592,10 +1592,12 @@ If emergency mentioned, set urgency to "emergency". If user asks to call/connect
         return res.send(twimlResponse);
       }
       
-      // Check for language switching requests
-      if (utterance.toLowerCase().includes('spanish') || utterance.toLowerCase().includes('español')) {
+      // Check for language switching requests (speech or digit 2)
+      if (utterance.toLowerCase().includes('spanish') || 
+          utterance.toLowerCase().includes('español') || 
+          utterance.trim() === '2') {
         conversation.language = 'es';
-        const switchText = 'Perfecto, continuemos en español. ¿Cómo puedo ayudarle?';
+        const switchText = 'Perfecto, continuemos en español. ¿Cómo puedo ayudarle hoy?';
         
         const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
