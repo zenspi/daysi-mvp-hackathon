@@ -203,20 +203,35 @@ export function registerRealtime(app: Express, server: Server) {
             'Unknown close code'
           }`);
           
-          // Don't immediately close browser connection - allow retry
-          if (code !== 1000) {
-            console.log(`[REALTIME] OpenAI connection failed, marking for retry for ${connectionId}`);
-            connection.openaiWS = null;
-            connection.isInitializing = false;
+          connection.openaiWS = null;
+          connection.isInitializing = false;
+          
+          // Handle different close codes appropriately
+          if (code === 1000) {
+            // Normal closure - session ended
+            browserWS.send(JSON.stringify({ 
+              type: 'session.ended',
+              message: 'Voice session completed' 
+            }));
+          } else if (code === 1006 || code === 1005) {
+            // Abnormal closure - connection issue, auto-retry
+            console.log(`[REALTIME] Abnormal closure detected, attempting auto-retry for ${connectionId}`);
+            setTimeout(() => {
+              if (browserWS.readyState === WebSocket.OPEN && !connection.openaiWS) {
+                console.log(`[REALTIME] Auto-retrying OpenAI connection for ${connectionId}`);
+                initializeOpenAI();
+              }
+            }, 2000); // 2 second delay before retry
             
+            browserWS.send(JSON.stringify({ 
+              type: 'connection.reconnecting',
+              message: 'Reconnecting to voice services...' 
+            }));
+          } else {
+            // Other errors - user action required
             browserWS.send(JSON.stringify({ 
               type: 'error', 
               message: 'Voice connection interrupted. Tap again to retry.' 
-            }));
-          } else {
-            browserWS.send(JSON.stringify({ 
-              type: 'error', 
-              message: 'OpenAI connection closed normally' 
             }));
           }
         });

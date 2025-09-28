@@ -119,6 +119,26 @@ export default function Voice() {
               return;
             }
             
+            if (data.type === 'connection.reconnecting') {
+              console.log('[VOICE] Reconnecting to voice services');
+              setConnectionStatus('connecting');
+              setVoiceStatus('idle');
+              setIsRecording(false);
+              toast({
+                title: 'Reconnecting',
+                description: data.message || 'Reconnecting to voice services...',
+                variant: 'default'
+              });
+              return;
+            }
+            
+            if (data.type === 'session.ended') {
+              console.log('[VOICE] Voice session ended normally');
+              setVoiceStatus('idle');
+              setIsRecording(false);
+              return;
+            }
+            
             if (data.type === 'error') {
               console.error('[VOICE] Server error:', data.message || data.error);
               const errorMessage = data.message || data.error;

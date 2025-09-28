@@ -842,6 +842,7 @@ Please respond with JSON in this format:
       });
       
       const filters = JSON.parse(filterResponse.choices[0].message.content || '{}');
+      console.log(`[ASK:${correlationId}] Intent: ${intent}, Filters extracted:`, filters);
       
       // 4) Query providers or resources
       let results = [];
@@ -863,7 +864,12 @@ Please respond with JSON in this format:
           query = query.contains('languages', [detectedLang]);
         }
         
-        const { data } = await query.limit(10);
+        console.log(`[ASK:${correlationId}] Querying providers with filters:`, { borough: filters.borough, specialty: filters.specialty, language: detectedLang });
+        const { data, error } = await query.limit(10);
+        if (error) {
+          console.log(`[ASK:${correlationId}] Provider query error:`, error);
+        }
+        console.log(`[ASK:${correlationId}] Provider query returned ${data?.length || 0} results`);
         let providerResults = data || [];
         
         // Distance sorting if location provided
@@ -906,7 +912,12 @@ Please respond with JSON in this format:
           query = query.contains('languages', [detectedLang]);
         }
         
-        const { data } = await query.limit(10);
+        console.log(`[ASK:${correlationId}] Querying resources with filters:`, { borough: filters.borough, category: filters.category, language: detectedLang });
+        const { data, error } = await query.limit(10);
+        if (error) {
+          console.log(`[ASK:${correlationId}] Resource query error:`, error);
+        }
+        console.log(`[ASK:${correlationId}] Resource query returned ${data?.length || 0} results`);
         let resourceResults = data || [];
         
         // Distance sorting if location provided
