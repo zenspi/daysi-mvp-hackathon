@@ -19,12 +19,18 @@ interface Provider {
   specialty: string;
   phone: string;
   address: string;
+  city: string;
+  state: string;
+  zip: string;
   borough: string;
   languages: string[];
-  insurance_accepted: string[];
-  rating?: number;
-  latitude?: number;
-  longitude?: number;
+  insurance: string[];
+  website?: string;
+  lat?: number | null;
+  lng?: number | null;
+  verified?: boolean;
+  source?: string;
+  updated_at?: string;
   distance?: number;
 }
 
@@ -46,7 +52,7 @@ export default function ProviderSearch() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [useLocation, setUseLocation] = useState(false);
+  const [useUserLocation, setUseUserLocation] = useState(false);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   
   // Filters
@@ -71,7 +77,7 @@ export default function ProviderSearch() {
       if (filters.language) params.append('lang', filters.language);
       
       // Add location if enabled
-      if (useLocation && userLocation) {
+      if (useUserLocation && userLocation) {
         params.append('lat', userLocation.lat.toString());
         params.append('lng', userLocation.lng.toString());
       }
@@ -100,7 +106,7 @@ export default function ProviderSearch() {
         
         if (filters.insurance) {
           results = results.filter((provider: Provider) =>
-            provider.insurance_accepted?.some(ins => 
+            provider.insurance?.some((ins: string) => 
               ins.toLowerCase().includes(filters.insurance.toLowerCase())
             )
           );
@@ -123,7 +129,7 @@ export default function ProviderSearch() {
     } finally {
       setLoading(false);
     }
-  }, [filters, useLocation, userLocation, toast, t]);
+  }, [filters, useUserLocation, userLocation, toast, t]);
 
   // Request location
   const requestLocation = useCallback(() => {
@@ -142,7 +148,7 @@ export default function ProviderSearch() {
           lng: position.coords.longitude
         };
         setUserLocation(location);
-        setUseLocation(true);
+        setUseUserLocation(true);
         
         toast({
           title: t('location.banner.title'),
@@ -184,7 +190,7 @@ export default function ProviderSearch() {
       phone: provider.phone,
       address: provider.address,
       languages: provider.languages,
-      insurance: provider.insurance_accepted
+      insurance: provider.insurance
     };
     
     // Store provider context for Ask Daysi
@@ -310,11 +316,11 @@ export default function ProviderSearch() {
           <Button
             variant="outline"
             onClick={requestLocation}
-            disabled={useLocation}
+            disabled={useUserLocation}
             data-testid="button-use-location"
           >
             <MapPin className="h-4 w-4 mr-1" />
-            {useLocation ? '✓' : t('search.providers.useMyLocation')}
+            {useUserLocation ? '✓' : t('search.providers.useMyLocation')}
           </Button>
         </div>
         
@@ -496,7 +502,7 @@ export default function ProviderSearch() {
                 `${providers.length} ${providers.length === 1 ? 'provider' : 'providers'} found`
               )}
             </h2>
-            {useLocation && userLocation && (
+            {useUserLocation && userLocation && (
               <Badge variant="outline" className="text-xs" data-testid="location-badge">
                 <MapPin className="h-3 w-3 mr-1" />
                 Sorted by distance
@@ -588,18 +594,18 @@ export default function ProviderSearch() {
                             </div>
                           )}
                           
-                          {provider.insurance_accepted && provider.insurance_accepted.length > 0 && (
+                          {provider.insurance && provider.insurance.length > 0 && (
                             <div className="flex items-start gap-2">
                               <Clock className="h-4 w-4 text-muted-foreground mt-0.5" />
                               <div className="flex gap-1 flex-wrap">
-                                {provider.insurance_accepted.slice(0, 2).map((insurance, i) => (
+                                {provider.insurance.slice(0, 2).map((insurance: string, i: number) => (
                                   <Badge key={i} variant="outline" className="text-xs" data-testid={`provider-insurance-${provider.id}-${i}`}>
                                     {insurance}
                                   </Badge>
                                 ))}
-                                {provider.insurance_accepted.length > 2 && (
+                                {provider.insurance.length > 2 && (
                                   <Badge variant="outline" className="text-xs">
-                                    +{provider.insurance_accepted.length - 2} more
+                                    +{provider.insurance.length - 2} more
                                   </Badge>
                                 )}
                               </div>
