@@ -93,7 +93,7 @@ export default function Home() {
               {getGreeting()}
             </h1>
             <h2 className="text-xl font-semibold text-primary">
-              🔴 DEVELOPMENT TEST - {t('app.name')}
+              {t('app.name')}
             </h2>
             <p className="text-sm text-muted-foreground max-w-sm mx-auto">
               {t('home.subtitle')}

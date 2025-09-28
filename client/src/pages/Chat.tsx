@@ -203,7 +203,7 @@ export default function Chat() {
             </div>
             <div>
               <h1 className="text-lg font-semibold" data-testid="chat-title">
-                Daysi [DEV MODE WORKING!]
+                ⚡ FINAL TEST - Daysi
               </h1>
               <p className="text-xs text-muted-foreground" data-testid="chat-subtitle">
                 Healthcare Navigator • Online
