@@ -215,48 +215,61 @@ export default function Voice() {
 
   // Play audio buffer from server (PCM16 24kHz)
   const playAudioBuffer = useCallback(async (buffer: ArrayBuffer) => {
-    if (!playbackCtxRef.current) {
-      console.warn('[VOICE] No playback context available');
-      return;
-    }
-    
     try {
-      // Force AudioContext resume with user interaction
-      if (playbackCtxRef.current.state === 'suspended') {
+      // Initialize audio context on first use (user gesture required)
+      const audioContext = initializePlaybackAudio();
+      if (!audioContext) {
+        console.warn('[VOICE] No audio context available');
+        return;
+      }
+      
+      // Force AudioContext resume (critical for autoplay policy)
+      if (audioContext.state === 'suspended') {
         console.log('[VOICE] AudioContext suspended, attempting resume...');
-        await playbackCtxRef.current.resume();
-        console.log('[VOICE] AudioContext state after resume:', playbackCtxRef.current.state);
+        await audioContext.resume();
+        console.log('[VOICE] AudioContext state after resume:', audioContext.state);
+      }
+      
+      if (audioContext.state !== 'running') {
+        console.warn('[VOICE] AudioContext not running:', audioContext.state);
+        // Try to resume again
+        try {
+          await audioContext.resume();
+        } catch (resumeError) {
+          console.error('[VOICE] Failed to resume AudioContext:', resumeError);
+          return;
+        }
       }
       
       console.log(`[VOICE] Playing audio buffer: ${buffer.byteLength} bytes`);
-      console.log('[VOICE] AudioContext state:', playbackCtxRef.current.state);
+      console.log('[VOICE] AudioContext state:', audioContext.state);
       
       // Convert PCM16 24kHz to AudioBuffer
       const pcm16Data = new Int16Array(buffer);
       const float32Data = new Float32Array(pcm16Data.length);
       
-      // Convert PCM16 to Float32 with volume boost
+      // Convert PCM16 to Float32 with better volume handling
       for (let i = 0; i < pcm16Data.length; i++) {
-        float32Data[i] = (pcm16Data[i] / 32768.0) * 2.0; // 2x volume boost
+        float32Data[i] = Math.max(-1, Math.min(1, (pcm16Data[i] / 32768.0) * 1.5)); // Normalize and boost
       }
       
       // Create audio buffer (24kHz mono)
-      const audioBuffer = playbackCtxRef.current.createBuffer(1, float32Data.length, 24000);
+      const audioBuffer = audioContext.createBuffer(1, float32Data.length, 24000);
       audioBuffer.getChannelData(0).set(float32Data);
       
       // Create gain node for volume control
-      const gainNode = playbackCtxRef.current.createGain();
-      gainNode.gain.value = 0.8; // 80% volume
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 0.9; // 90% volume
       
       // Play audio with gain
-      const source = playbackCtxRef.current.createBufferSource();
+      const source = audioContext.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(gainNode);
-      gainNode.connect(playbackCtxRef.current.destination);
+      gainNode.connect(audioContext.destination);
       
       // Add event listeners for debugging
       source.onended = () => {
-        console.log('[VOICE] Audio playback finished');
+        console.log('[VOICE] Audio chunk finished playing');
       };
       
       source.start();
@@ -265,7 +278,7 @@ export default function Voice() {
     } catch (error) {
       console.error('[VOICE] Audio playback error:', error);
     }
-  }, []);
+  }, [initializePlaybackAudio]);
 
   // Check microphone permissions
   const checkMicrophonePermission = useCallback(async () => {
@@ -312,14 +325,20 @@ export default function Voice() {
 
     console.log('[VOICE] Starting voice session...');
     
-    // Force AudioContext resume on user interaction (critical for audio playback)
-    if (playbackCtxRef.current && playbackCtxRef.current.state === 'suspended') {
-      console.log('[VOICE] Resuming AudioContext on user interaction...');
-      try {
-        await playbackCtxRef.current.resume();
-        console.log('[VOICE] AudioContext resumed successfully, state:', playbackCtxRef.current.state);
-      } catch (error) {
-        console.error('[VOICE] Failed to resume AudioContext:', error);
+    // Initialize AudioContext with user gesture (critical for audio playback)
+    const audioContext = initializePlaybackAudio();
+    if (audioContext) {
+      console.log('[VOICE] AudioContext initialized, state:', audioContext.state);
+      
+      // Force resume with user gesture
+      if (audioContext.state === 'suspended') {
+        console.log('[VOICE] Resuming AudioContext on user interaction...');
+        try {
+          await audioContext.resume();
+          console.log('[VOICE] AudioContext resumed successfully, state:', audioContext.state);
+        } catch (error) {
+          console.error('[VOICE] Failed to resume AudioContext:', error);
+        }
       }
     }
     
