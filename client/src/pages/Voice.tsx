@@ -33,9 +33,9 @@ export default function Voice() {
   const [hasAudioSupport] = useState(() => !!navigator.mediaDevices?.getUserMedia);
   const [microphonePermission, setMicrophonePermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
   
-  // Separate audio contexts for playback and capture
-  const playbackCtxRef = useRef<AudioContext | null>(null);
-  const captureRef = useRef<{ audioContext: AudioContext, processor: ScriptProcessorNode, source: MediaStreamAudioSourceNode } | null>(null);
+  // Single AudioContext for all audio operations to prevent conflicts
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const captureRef = useRef<{ processor: ScriptProcessorNode, source: MediaStreamAudioSourceNode } | null>(null);
   
 
   // Refs
@@ -45,21 +45,24 @@ export default function Voice() {
   const cachedStreamRef = useRef<MediaStream | null>(null);
 
 
-  // Initialize audio context for playback only - defer until user interaction
-  const initializePlaybackAudio = useCallback(() => {
-    if (!playbackCtxRef.current && typeof window !== 'undefined') {
-      console.log('[VOICE] Creating AudioContext for playback...');
-      playbackCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      console.log('[VOICE] AudioContext initial state:', playbackCtxRef.current.state);
+  // Initialize single AudioContext for all audio operations
+  const initializeAudioContext = useCallback(() => {
+    if (!audioContextRef.current && typeof window !== 'undefined') {
+      console.log('[VOICE] Creating single AudioContext...');
+      // Use 24kHz sample rate to match OpenAI Realtime API
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
+        sampleRate: 24000
+      });
+      console.log('[VOICE] AudioContext created with sample rate:', audioContextRef.current.sampleRate);
     }
-    return playbackCtxRef.current;
+    return audioContextRef.current;
   }, []);
 
   // Cleanup audio context
   useEffect(() => {
     return () => {
-      if (playbackCtxRef.current) {
-        playbackCtxRef.current.close();
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
       }
     };
   }, []);
@@ -233,68 +236,67 @@ export default function Voice() {
     }
   }, [toast, language]);
 
-  // Play audio buffer from server (PCM16 24kHz) - SIMPLIFIED
+  // Play audio buffer from OpenAI (raw PCM16 data) - FIXED
   const playAudioBuffer = useCallback(async (buffer: ArrayBuffer) => {
+    console.log(`[VOICE] Playing audio buffer: ${buffer.byteLength} bytes`);
+    
     try {
-      console.log(`[VOICE] Received audio buffer: ${buffer.byteLength} bytes`);
+      const audioContext = initializeAudioContext();
+      if (!audioContext) {
+        console.error('[VOICE] No audio context available');
+        return;
+      }
+
+      // Ensure AudioContext is running
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+        console.log('[VOICE] AudioContext resumed');
+      }
+
+      // Validate buffer size for PCM16 (must be even number of bytes)
+      if (buffer.byteLength % 2 !== 0) {
+        console.warn('[VOICE] Invalid PCM16 buffer size, truncating');
+        buffer = buffer.slice(0, buffer.byteLength - 1);
+      }
+
+      if (buffer.byteLength === 0) {
+        console.warn('[VOICE] Empty audio buffer, skipping playback');
+        return;
+      }
+
+      // Convert raw PCM16 data to AudioBuffer
+      const pcm16Array = new Int16Array(buffer);
+      const audioBuffer = audioContext.createBuffer(1, pcm16Array.length, 24000);
+      const channelData = audioBuffer.getChannelData(0);
+
+      // Convert PCM16 to float32 with proper normalization
+      for (let i = 0; i < pcm16Array.length; i++) {
+        // Normalize PCM16 (-32768 to 32767) to float32 (-1.0 to 1.0)
+        channelData[i] = Math.max(-1.0, Math.min(1.0, pcm16Array[i] / 32768.0));
+      }
+
+      // Create audio source with gain control
+      const source = audioContext.createBufferSource();
+      const gainNode = audioContext.createGain();
       
-      // Create a simple audio element approach for more reliable playback
-      const blob = new Blob([buffer], { type: 'audio/wav' });
-      const audioUrl = URL.createObjectURL(blob);
-      const audio = new Audio(audioUrl);
+      source.buffer = audioBuffer;
+      gainNode.gain.value = 0.8; // Prevent clipping
       
-      // Set volume and play
-      audio.volume = 0.8;
-      audio.onloadeddata = () => {
-        console.log('[VOICE] Audio loaded, duration:', audio.duration);
-      };
-      audio.onended = () => {
-        console.log('[VOICE] Audio playback finished');
-        URL.revokeObjectURL(audioUrl);
-      };
-      audio.onerror = (error) => {
-        console.error('[VOICE] Audio playback error:', error);
-        URL.revokeObjectURL(audioUrl);
-      };
+      source.connect(gainNode);
+      gainNode.connect(audioContext.destination);
       
-      await audio.play();
-      console.log('[VOICE] Audio playback started');
+      source.start();
+      console.log('[VOICE] Audio playback started successfully');
       
     } catch (error) {
-      console.error('[VOICE] Audio playback error:', error);
-      
-      // Fallback: Try with AudioContext if blob approach fails
-      try {
-        const audioContext = initializePlaybackAudio();
-        if (!audioContext) return;
-        
-        if (audioContext.state === 'suspended') {
-          await audioContext.resume();
-        }
-        
-        // Simple PCM16 to Float32 conversion
-        const pcm16Data = new Int16Array(buffer);
-        const float32Data = new Float32Array(pcm16Data.length);
-        
-        for (let i = 0; i < pcm16Data.length; i++) {
-          float32Data[i] = pcm16Data[i] / 32768.0; // Simple normalization
-        }
-        
-        const audioBuffer = audioContext.createBuffer(1, float32Data.length, 24000);
-        audioBuffer.getChannelData(0).set(float32Data);
-        
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
-        source.start();
-        
-        console.log('[VOICE] Fallback AudioContext playback started');
-        
-      } catch (fallbackError) {
-        console.error('[VOICE] Fallback audio error:', fallbackError);
-      }
+      console.error('[VOICE] Audio playback failed:', error);
+      toast({
+        title: "Audio Error",
+        description: "Voice response could not be played. Check audio settings.",
+        variant: "destructive"
+      });
     }
-  }, [initializePlaybackAudio]);
+  }, [initializeAudioContext, toast]);
 
   // Check microphone permissions
   const checkMicrophonePermission = useCallback(async () => {
@@ -341,31 +343,21 @@ export default function Voice() {
 
     console.log('[VOICE] Starting voice session...');
     
-    // Initialize AudioContext with user gesture (critical for audio playback)
-    const audioContext = initializePlaybackAudio();
-    if (audioContext) {
-      console.log('[VOICE] AudioContext initialized, state:', audioContext.state);
-      
+    try {
+      // Initialize single AudioContext for all operations
+      const audioContext = initializeAudioContext();
+      if (!audioContext) {
+        throw new Error('AudioContext initialization failed');
+      }
+
       // Force resume with user gesture
       if (audioContext.state === 'suspended') {
-        console.log('[VOICE] Resuming AudioContext on user interaction...');
-        try {
-          await audioContext.resume();
-          console.log('[VOICE] AudioContext resumed successfully, state:', audioContext.state);
-        } catch (error) {
-          console.error('[VOICE] Failed to resume AudioContext:', error);
-        }
+        console.log('[VOICE] Resuming AudioContext...');
+        await audioContext.resume();
+        console.log('[VOICE] AudioContext resumed, state:', audioContext.state);
       }
-    }
-    
-    try {
+
       const stream = await getMicrophoneStream();
-
-      // SIMPLIFIED: Create AudioContext with better settings
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
-        sampleRate: 48000 // Use standard sample rate, downsample on server
-      });
-
       const source = audioContext.createMediaStreamSource(stream);
       
       // Use smaller buffer size to reduce latency and static
@@ -408,27 +400,8 @@ export default function Voice() {
       };
 
       source.connect(processor);
-      // Store references for cleanup
-      captureRef.current = { audioContext, processor, source };
-
-      setIsRecording(true);
-      setVoiceStatus('listening');
-
-      // Session is already configured by server - just start audio capture
-      console.log('[VOICE] Voice session started, audio capture active');
-
-    } catch (error) {
-      console.error('[VOICE] Microphone access failed:', error);
-      setVoiceStatus('idle');
-      setIsRecording(false);
-      
-      // Don't close WebSocket connection on mic failure
-      toast({
-        title: 'Microphone Access Required',
-        description: 'Please allow microphone access to use voice features',
-        variant: 'destructive'
-      });
-    }
+      // Store references for cleanup (don't store audioContext since it's shared)
+      captureRef.current = { processor, source };
 
       setIsRecording(true);
       setVoiceStatus('listening');
@@ -453,13 +426,12 @@ export default function Voice() {
   // Stop voice session
   const stopVoiceSession = useCallback(() => {
     if (captureRef.current) {
-      const { audioContext, processor, source } = captureRef.current;
+      const { processor, source } = captureRef.current;
       
-      // Clean up AudioContext and nodes
+      // Clean up audio nodes (but keep shared AudioContext)
       try {
         source.disconnect();
         processor.disconnect();
-        audioContext.close();
       } catch (error) {
         console.error('[VOICE] Cleanup error:', error);
       }
@@ -481,28 +453,29 @@ export default function Voice() {
     });
   }, []);
 
-  // Test audio playback with a simple tone
+  // Test audio playback with a simple tone - FIXED
   const testAudio = useCallback(async () => {
-    if (!playbackCtxRef.current) {
+    const audioContext = initializeAudioContext();
+    if (!audioContext) {
       console.warn('[VOICE] No audio context for test');
       return;
     }
 
     try {
       // Resume AudioContext if suspended
-      if (playbackCtxRef.current.state === 'suspended') {
+      if (audioContext.state === 'suspended') {
         console.log('[AUDIO TEST] Resuming suspended AudioContext...');
-        await playbackCtxRef.current.resume();
+        await audioContext.resume();
       }
 
-      console.log('[AUDIO TEST] AudioContext state:', playbackCtxRef.current.state);
+      console.log('[AUDIO TEST] AudioContext state:', audioContext.state);
 
       // Generate a 440Hz tone for 0.5 seconds
-      const sampleRate = playbackCtxRef.current.sampleRate;
+      const sampleRate = audioContext.sampleRate;
       const duration = 0.5;
       const samples = sampleRate * duration;
       
-      const audioBuffer = playbackCtxRef.current.createBuffer(1, samples, sampleRate);
+      const audioBuffer = audioContext.createBuffer(1, samples, sampleRate);
       const channelData = audioBuffer.getChannelData(0);
       
       // Generate sine wave
@@ -510,10 +483,15 @@ export default function Voice() {
         channelData[i] = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.3;
       }
       
-      // Play the tone
-      const source = playbackCtxRef.current.createBufferSource();
+      // Play the tone with gain control
+      const source = audioContext.createBufferSource();
+      const gainNode = audioContext.createGain();
+      
       source.buffer = audioBuffer;
-      source.connect(playbackCtxRef.current.destination);
+      gainNode.gain.value = 0.5; // Moderate volume
+      
+      source.connect(gainNode);
+      gainNode.connect(audioContext.destination);
       source.start();
       
       console.log('[AUDIO TEST] Playing test tone (440Hz)');
@@ -521,7 +499,7 @@ export default function Voice() {
     } catch (error) {
       console.error('[AUDIO TEST] Failed:', error);
     }
-  }, []);
+  }, [initializeAudioContext]);
 
   // Initialize on mount - auto-connect and auto-request location
   useEffect(() => {
