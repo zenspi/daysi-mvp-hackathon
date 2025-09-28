@@ -740,25 +740,38 @@ Please respond with JSON in this format:
         return res.status(500).json({ success: false, error: 'AI features not configured' });
       }
       
-      // 2) Auto-detect language if missing
-      let detectedLang = lang || (currentUser?.language) || 'English';
-      if (!lang && !currentUser?.language) {
+      // HOTFIX: Support lang:'auto' and use same detection as voice interface
+      let detectedLang = 'English'; // Default to English per HOTFIX requirement
+      
+      if (lang === 'auto' || !lang) {
         try {
-          const langDetectPrompt = `Detect the language of this message and respond with just the language name in English: "${message}"`;
-          const langResponse = await openai.chat.completions.create({
-            model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-            messages: [{ role: "user", content: langDetectPrompt }]
-          });
+          // Use the same language detection endpoint as voice interface
+          const response = await fetch(`http://localhost:${process.env.PORT || 5000}/api/voice/detect-language?text=${encodeURIComponent(message)}`);
+          const data = await response.json();
           
-          const detected = (langResponse.choices[0].message.content || '').trim().toLowerCase();
-          if (detected.includes('spanish') || detected.includes('español')) {
-            detectedLang = 'Spanish';
-          } else if (detected.includes('english')) {
-            detectedLang = 'English';
+          if (data.success && data.language) {
+            detectedLang = data.language.code === 'es' ? 'Spanish' : 'English';
+            console.log(`[ASK] Language detected: ${detectedLang} (confidence: ${data.language.confidence})`);
+          } else {
+            console.log('[ASK] Language detection failed, using fallback method');
+            // Fallback to original method
+            const langDetectPrompt = `Detect the language of this message and respond with just the language name in English: "${message}"`;
+            const langResponse = await openai.chat.completions.create({
+              model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+              messages: [{ role: "user", content: langDetectPrompt }]
+            });
+            
+            const detected = (langResponse.choices[0].message.content || '').trim().toLowerCase();
+            if (detected.includes('spanish') || detected.includes('español')) {
+              detectedLang = 'Spanish';
+            }
           }
         } catch (e) {
           console.log('[ASK] Language detection failed, defaulting to English');
         }
+      } else {
+        // Use provided language or user preference
+        detectedLang = lang || (currentUser?.language) || 'English';
       }
       
       // 3) Intent routing - determine if care access or social needs
