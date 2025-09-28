@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Home, Mic, MessageCircle, Search, User, Download } from "lucide-react";
+import { Home, Mic, MessageCircle, Search, User, Download, Stethoscope, Heart } from "lucide-react";
 import { useI18n, getLanguageInfo } from "@/contexts/I18nContext";
 
 interface MobileLayoutProps {
@@ -50,8 +50,8 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
     { path: '/', icon: Home, label: t('navigation.home') },
     { path: '/voice', icon: Mic, label: t('navigation.voice') },
     { path: '/chat', icon: MessageCircle, label: t('navigation.chat') },
-    { path: '/search/providers', icon: Search, label: t('navigation.search') },
-    { path: '/profile', icon: User, label: t('navigation.profile') },
+    { path: '/search/providers', icon: Stethoscope, label: 'Providers' },
+    { path: '/search/resources', icon: Heart, label: 'Resources' },
   ];
 
   return (
@@ -103,27 +103,39 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border">
-        <div className="flex items-center justify-around py-2">
+        <div className="grid grid-cols-5 py-2">
           {navItems.map(({ path, icon: Icon, label }) => {
-            const isActive = location === path || 
-              (path === '/search/providers' && location.startsWith('/search'));
+            const isActive = location === path;
             
             return (
               <Link key={path} href={path}>
                 <div 
-                  className={`flex flex-col items-center p-2 min-w-[60px] ${
+                  className={`flex flex-col items-center p-2 ${
                     isActive 
                       ? 'text-sky-500' 
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                   data-testid={`nav-${label.toLowerCase()}`}
                 >
-                  <Icon className="w-5 h-5" />
-                  <span className="text-xs mt-1">{label}</span>
+                  <Icon className="w-4 h-4" />
+                  <span className="text-xs mt-1 text-center">{label}</span>
                 </div>
               </Link>
             );
           })}
+        </div>
+        
+        {/* Profile moved to header for space */}
+        <div className="absolute top-2 right-2">
+          <Link href="/profile">
+            <div className={`p-1 rounded-full ${
+              location === '/profile' 
+                ? 'text-sky-500' 
+                : 'text-muted-foreground hover:text-foreground'
+            }`}>
+              <User className="w-4 h-4" />
+            </div>
+          </Link>
         </div>
       </nav>
     </div>
