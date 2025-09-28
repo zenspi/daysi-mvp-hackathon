@@ -47,5 +47,13 @@ httpServer.listen(config.PORT, config.HOST, () => {
   if (isDevelopment()) {
     logConfig();
   }
+  
+  // API key verification log
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (apiKey) {
+    console.log(`🔑 OpenAI API Key: configured (${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)})`);
+  } else {
+    console.log(`⚠️  OpenAI API Key: NOT CONFIGURED - AI features will be unavailable`);
+  }
 });
 

@@ -1093,7 +1093,7 @@ Please respond with JSON in this format:
         model: "gpt-4o-mini",
         messages: [{
           role: "user",
-          content: `Detect the language of this text and return confidence score. Text: "${text}"`
+          content: `Detect the language of this text and return confidence score in JSON format with fields "code" (en/es) and "conf" (0-1). Text: "${text}"`
         }],
         response_format: { type: "json_object" },
         max_tokens: 50

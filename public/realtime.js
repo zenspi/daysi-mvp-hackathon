@@ -17,6 +17,10 @@ class HealthcareVoiceAssistant {
         this.audioQueue = [];
         this.isPlayingAudio = false;
         this.openaiReady = false;
+        // WebRTC stability tracking
+        this.tokenExpiryTime = null;
+        this.keepaliveInterval = null;
+        this.connectionState = 'disconnected';
         
         // UI Elements
         this.startBtn = document.getElementById('startBtn');
@@ -56,6 +60,9 @@ class HealthcareVoiceAssistant {
         });
 
         // WebSocket connection now working - focus on voice functionality
+        
+        // Initialize language indicator
+        this.updateLanguageIndicator();
     }
     
     async initializeAudio() {
@@ -290,6 +297,9 @@ class HealthcareVoiceAssistant {
     async connectWebRTC(stream, clientSecret) {
         return new Promise(async (resolve, reject) => {
             try {
+                console.log('🔗 Creating WebRTC peer connection...');
+                this.connectionState = 'connecting';
+                
                 // Create RTCPeerConnection
                 this.pc = new RTCPeerConnection();
                 
@@ -299,6 +309,9 @@ class HealthcareVoiceAssistant {
                 // Store microphone control state
                 this.micEnabled = true;
                 this.aiSpeaking = false;
+                
+                // Set token expiry (ephemeral tokens typically last 60 seconds)
+                this.tokenExpiryTime = Date.now() + (50 * 1000); // 50 seconds to be safe
                 
                 // Add local microphone stream
                 stream.getTracks().forEach(track => {
@@ -329,10 +342,14 @@ class HealthcareVoiceAssistant {
                     this.controlChannel = channel; // Store for sending session updates
                     
                     channel.onopen = () => {
-                        console.log('OpenAI data channel opened');
+                        console.log('📤 OpenAI data channel opened');
+                        this.connectionState = 'connected';
                         
                         // Send session configuration to pin language and improve settings
                         this.sendSessionUpdate();
+                        
+                        // Start keepalive ping every 10 seconds
+                        this.startKeepalive();
                     };
                     
                     channel.onmessage = (event) => {
@@ -723,7 +740,11 @@ class HealthcareVoiceAssistant {
     }
     
     stopVoiceSession() {
-        console.log('Stopping voice session...');
+        console.log('🛑 Stopping voice session...');
+        this.connectionState = 'disconnected';
+        
+        // Stop keepalive
+        this.stopKeepalive();
         
         if (this.mediaRecorder && this.isRecording) {
             this.mediaRecorder.stop();
@@ -753,12 +774,15 @@ class HealthcareVoiceAssistant {
         this.audioQueue = [];
         this.isPlayingAudio = false;
         
+        // Reset token tracking
+        this.tokenExpiryTime = null;
+        
         this.startBtn.disabled = false;
         this.stopBtn.disabled = true;
         this.updateStatus('disconnected', '🔴 Voice session ended');
         this.hideAudioVisualizer();
         
-        console.log('Voice session stopped');
+        console.log('✅ Voice session stopped');
     }
     
     async sendTextMessage() {
@@ -856,6 +880,64 @@ class HealthcareVoiceAssistant {
         this.langState.window = []; // Clear detection history
         this.updateLanguageIndicator();
         this.showToast('Language lock removed - will auto-detect', 'info');
+    }
+
+    // Start keepalive ping over data channel
+    startKeepalive() {
+        if (this.keepaliveInterval) {
+            clearInterval(this.keepaliveInterval);
+        }
+        
+        this.keepaliveInterval = setInterval(() => {
+            if (this.controlChannel && this.controlChannel.readyState === 'open') {
+                const ping = { type: 'ping', timestamp: Date.now() };
+                this.controlChannel.send(JSON.stringify(ping));
+                console.log('📡 Keepalive ping sent');
+                
+                // Check token expiry
+                if (this.tokenExpiryTime && Date.now() > this.tokenExpiryTime) {
+                    console.log('⚠️ Token expired, reconnecting...');
+                    this.renewConnection();
+                }
+            } else {
+                console.log('⚠️ Control channel not available for keepalive');
+                this.reconnect();
+            }
+        }, 10000); // Every 10 seconds
+    }
+
+    // Renew connection with fresh token
+    async renewConnection() {
+        console.log('🔄 Renewing WebRTC connection...');
+        try {
+            // Get fresh ephemeral token
+            const response = await fetch('/api/voice/ephemeral', { method: 'POST' });
+            if (!response.ok) {
+                throw new Error('Failed to get fresh token');
+            }
+
+            const { client_secret } = await response.json();
+            console.log('✅ Fresh token received, reconnecting...');
+            
+            // Reset token expiry
+            this.tokenExpiryTime = Date.now() + (50 * 1000);
+            
+            // For now, do a full reconnect - could optimize to renegotiate
+            this.reconnect();
+            
+        } catch (error) {
+            console.error('❌ Connection renewal failed:', error);
+            this.reconnect();
+        }
+    }
+
+    // Stop keepalive
+    stopKeepalive() {
+        if (this.keepaliveInterval) {
+            clearInterval(this.keepaliveInterval);
+            this.keepaliveInterval = null;
+            console.log('🛑 Keepalive stopped');
+        }
     }
     
     async requestLocation() {
