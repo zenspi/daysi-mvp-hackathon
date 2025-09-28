@@ -231,10 +231,11 @@ export default function Voice() {
       setIsRecording(true);
       setVoiceStatus('listening');
 
-      // Send session creation with simplified config
+      // Send session creation with correct format
       if (wsRef.current?.readyState === WebSocket.OPEN) {
-        console.log('[VOICE] Sending session.create...');
+        console.log('[VOICE] Sending session.update...');
         wsRef.current.send(JSON.stringify({
+          event_id: `session_${Date.now()}`,
           type: 'session.update',
           session: {
             modalities: ['text', 'audio'],
@@ -246,14 +247,11 @@ export default function Voice() {
               model: 'whisper-1'
             },
             turn_detection: {
-              type: 'server_vad',
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 1000
+              type: 'server_vad'
             }
           }
         }));
-        console.log('[VOICE] Session creation sent');
+        console.log('[VOICE] Session update sent');
       }
 
     } catch (error) {
