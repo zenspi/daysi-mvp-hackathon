@@ -49,11 +49,13 @@ export default function UserDashboard() {
   const { toast } = useToast();
   
   // Fetch user appointments by phone number
-  const { data: appointments = [], isLoading: appointmentsLoading } = useQuery({
+  const { data: appointmentsResponse, isLoading: appointmentsLoading } = useQuery({
     queryKey: ['/api/appointments/by-phone', user?.phone],
     enabled: !!user?.phone,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
+  
+  const appointments = (appointmentsResponse as { data?: Appointment[] })?.data || [];
   
   const [recentActivity] = useState<UserActivity[]>([
     {
