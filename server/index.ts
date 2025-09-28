@@ -14,7 +14,8 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Middleware for JSON parsing
+// Middleware for parsing request bodies
+app.use(express.urlencoded({ extended: false }));
 app.use(express.json({ limit: config.BODY_PARSER_LIMIT }));
 
 // Static file serving from configured directory
