@@ -39,8 +39,8 @@ setStorageMode(dbConnected);
 registerRealtime(app, httpServer);
 
 // Setup Vite development server integration OR serve static files
-// Force production mode to bypass HMR connection issues
-const forceProductionMode = true; // Set to true to completely bypass HMR
+// Enable HMR in development for live code changes
+const forceProductionMode = false; // Set to false to enable HMR in development
 if (!forceProductionMode && isDevelopment()) {
   await setupVite(app, httpServer);
 } else {
