@@ -1341,7 +1341,7 @@ Please respond with JSON in this format:
   let twilioClient: any = null;
   if (twilioAccountSid && twilioAuthToken) {
     try {
-      const twilio = require('twilio');
+      const { default: twilio } = await import('twilio');
       twilioClient = twilio(twilioAccountSid, twilioAuthToken);
       console.log('[TWILIO] Client initialized successfully');
     } catch (error) {
