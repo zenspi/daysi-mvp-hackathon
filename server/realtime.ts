@@ -21,14 +21,21 @@ export function registerRealtime(app: Express, server: Server) {
     server, 
     path: '/realtime',
     verifyClient: (info: any) => {
-      // Basic same-origin check
+      // Allow all connections in development for easier testing
+      if (process.env.NODE_ENV === 'development') {
+        return true;
+      }
+      
+      // Basic same-origin check for production
       const origin = info.origin;
       const host = info.req.headers.host;
       
       if (!origin || !host) return false;
       
-      // Allow localhost and same host connections
-      if (origin.includes('localhost') || origin.includes(host)) {
+      // Allow localhost, same host, and replit.app domains
+      if (origin.includes('localhost') || 
+          origin.includes(host) || 
+          origin.includes('replit.app')) {
         return true;
       }
       
