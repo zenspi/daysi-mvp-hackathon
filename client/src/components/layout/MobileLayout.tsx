@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Home, Mic, MessageCircle, Search, User, Download } from "lucide-react";
+import { useI18n, getLanguageInfo } from "@/contexts/I18nContext";
 
 interface MobileLayoutProps {
   children: React.ReactNode;
@@ -10,7 +11,7 @@ interface MobileLayoutProps {
 
 export default function MobileLayout({ children }: MobileLayoutProps) {
   const [location] = useLocation();
-  const [currentLang, setCurrentLang] = useState<'en' | 'es'>('en');
+  const { language, setLanguage, t } = useI18n();
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
@@ -41,17 +42,16 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
   };
 
   const toggleLanguage = () => {
-    const newLang = currentLang === 'en' ? 'es' : 'en';
-    setCurrentLang(newLang);
-    localStorage.setItem('preferredLanguage', newLang);
+    const newLang = language === 'en' ? 'es' : 'en';
+    setLanguage(newLang);
   };
 
   const navItems = [
-    { path: '/', icon: Home, label: 'Home' },
-    { path: '/voice', icon: Mic, label: 'Voice' },
-    { path: '/chat', icon: MessageCircle, label: 'Chat' },
-    { path: '/search/providers', icon: Search, label: 'Search' },
-    { path: '/profile', icon: User, label: 'Profile' },
+    { path: '/', icon: Home, label: t('navigation.home') },
+    { path: '/voice', icon: Mic, label: t('navigation.voice') },
+    { path: '/chat', icon: MessageCircle, label: t('navigation.chat') },
+    { path: '/search/providers', icon: Search, label: t('navigation.search') },
+    { path: '/profile', icon: User, label: t('navigation.profile') },
   ];
 
   return (
@@ -76,7 +76,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
               onClick={toggleLanguage}
               data-testid="language-toggle"
             >
-              {currentLang === 'en' ? '🇺🇸 EN' : '🇪🇸 ES'}
+              {getLanguageInfo(language).flag} {language.toUpperCase()}
             </Badge>
             
             {/* Install App Button */}

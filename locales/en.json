@@ -1,0 +1,216 @@
+{
+  "app": {
+    "name": "Ask Daysi",
+    "tagline": "Your healthcare companion"
+  },
+  "navigation": {
+    "home": "Home",
+    "voice": "Voice",
+    "chat": "Chat",
+    "search": "Search",
+    "profile": "Profile"
+  },
+  "buttons": {
+    "getCareNow": "Get care now",
+    "talkToDaysi": "Talk to Daysi",
+    "typeToDaysi": "Type to Daysi",
+    "findDoctor": "Find a doctor",
+    "findCommunityHelp": "Find community help",
+    "install": "Install",
+    "allow": "Allow",
+    "notNow": "Not now",
+    "sendCode": "Send code",
+    "save": "Save",
+    "cancel": "Cancel",
+    "submit": "Submit",
+    "continue": "Continue",
+    "back": "Back",
+    "retry": "Retry",
+    "close": "Close",
+    "directions": "Directions",
+    "claimProfile": "Claim this profile",
+    "instantVerify": "Instant verify (demo)"
+  },
+  "home": {
+    "welcome": "Welcome to Ask Daysi",
+    "subtitle": "Find healthcare providers, get AI guidance, and access community resources",
+    "quickActions": "Quick Actions",
+    "recentActivity": "Recent Activity",
+    "emergencyNotice": "For emergencies, call 911 immediately"
+  },
+  "voice": {
+    "title": "Voice Assistant",
+    "subtitle": "Speak naturally to get personalized healthcare guidance",
+    "micButton": "Tap to speak",
+    "listening": "Listening...",
+    "processing": "Processing...",
+    "transcript": "Transcript",
+    "useLocation": "Use my location",
+    "languageLocked": "Language locked",
+    "nextSteps": "Next steps",
+    "nearbyMatches": "Nearby matches"
+  },
+  "chat": {
+    "title": "Text Chat",
+    "subtitle": "Type your questions for instant healthcare assistance",
+    "placeholder": "Type your message...",
+    "send": "Send",
+    "thinking": "Daysi is thinking...",
+    "suggestions": "Suggestions"
+  },
+  "search": {
+    "providers": {
+      "title": "Find Providers",
+      "subtitle": "Search for healthcare professionals near you",
+      "filters": "Filters",
+      "borough": "Borough",
+      "specialty": "Specialty",
+      "language": "Language",
+      "insurance": "Insurance",
+      "useMyLocation": "Use my location",
+      "noResults": "No providers found matching your criteria",
+      "callNow": "Call now",
+      "milesAway": "miles away"
+    },
+    "resources": {
+      "title": "Find Resources",
+      "subtitle": "Discover community services and support programs",
+      "category": "Category",
+      "noResults": "No resources found matching your criteria"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Sign In",
+      "subtitle": "Enter your phone number or email to continue",
+      "tabs": {
+        "phone": "Phone",
+        "email": "Email"
+      },
+      "placeholders": {
+        "phone": "Enter your phone number",
+        "email": "Enter your email address",
+        "code": "Enter 6-digit code"
+      },
+      "codeSent": "Code sent to",
+      "codeInstructions": "Enter the verification code we sent you",
+      "resendCode": "Didn't receive it? Resend code",
+      "invalidCode": "Invalid code. Please try again."
+    }
+  },
+  "profile": {
+    "title": "Profile",
+    "subtitle": "Manage your account and preferences",
+    "personalInfo": "Personal Information",
+    "preferences": "Preferences",
+    "privacy": "Privacy & Consent",
+    "fields": {
+      "name": "Full Name",
+      "email": "Email",
+      "phone": "Phone",
+      "language": "Preferred Language",
+      "borough": "Borough",
+      "zipCode": "Zip Code"
+    },
+    "consent": {
+      "shareLocation": "Share location for nearby recommendations",
+      "receiveSms": "Receive SMS updates and reminders",
+      "receiveEmail": "Receive email updates"
+    },
+    "signOut": "Sign Out"
+  },
+  "admin": {
+    "title": "Admin Dashboard",
+    "overview": "System Overview",
+    "stats": {
+      "users": "Total Users",
+      "providers": "Providers",
+      "resources": "Resources",
+      "queries": "Recent Queries",
+      "errorRate": "Error Rate"
+    },
+    "recentActivity": "Recent Activity",
+    "systemHealth": "System Health"
+  },
+  "providerClaim": {
+    "title": "Claim Provider Profile",
+    "subtitle": "Verify your healthcare practice with Ask Daysi",
+    "searchPrompt": "Search for your practice or enter Provider ID",
+    "verificationForm": "Verification Information",
+    "fields": {
+      "providerId": "Provider ID",
+      "fullName": "Full Name",
+      "email": "Professional Email",
+      "phone": "Phone Number",
+      "license": "License Number",
+      "npi": "NPI Number"
+    },
+    "instructions": "We'll verify your credentials and contact you within 2-3 business days",
+    "pending": "Claim submitted - we'll verify you shortly",
+    "verified": "Profile verified successfully"
+  },
+  "location": {
+    "banner": {
+      "title": "May we use your location to sort nearby care?",
+      "subtitle": "Your location is used only for proximity-based recommendations and is not stored."
+    },
+    "denied": "Location access denied",
+    "error": "Unable to get location"
+  },
+  "languages": {
+    "english": "English",
+    "spanish": "Spanish",
+    "chinese": "Chinese",
+    "arabic": "Arabic",
+    "french": "French",
+    "russian": "Russian"
+  },
+  "boroughs": {
+    "manhattan": "Manhattan",
+    "brooklyn": "Brooklyn",
+    "queens": "Queens",
+    "bronx": "Bronx",
+    "statenIsland": "Staten Island"
+  },
+  "specialties": {
+    "primaryCare": "Primary Care",
+    "pediatrics": "Pediatrics",
+    "obgyn": "OB-GYN",
+    "cardiology": "Cardiology",
+    "dermatology": "Dermatology",
+    "mentalHealth": "Mental Health",
+    "dentistry": "Dentistry",
+    "orthopedics": "Orthopedics"
+  },
+  "resourceCategories": {
+    "housing": "Housing Assistance",
+    "food": "Food Security",
+    "healthcare": "Healthcare Access",
+    "legal": "Legal Aid",
+    "childcare": "Childcare",
+    "elderly": "Elder Care",
+    "mental": "Mental Health Support",
+    "substance": "Substance Abuse"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "network": "Network error. Please check your connection.",
+    "timeout": "Request timed out. Please try again.",
+    "notFound": "The requested resource was not found.",
+    "unauthorized": "You are not authorized to access this resource.",
+    "validation": "Please check your input and try again."
+  },
+  "loading": {
+    "general": "Loading...",
+    "searching": "Searching...",
+    "saving": "Saving...",
+    "sending": "Sending...",
+    "verifying": "Verifying..."
+  },
+  "empty": {
+    "noProviders": "No healthcare providers found in this area.",
+    "noResources": "No community resources found.",
+    "noHistory": "No conversation history yet.",
+    "noNotifications": "No new notifications."
+  }
+}

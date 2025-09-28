@@ -1,0 +1,216 @@
+{
+  "app": {
+    "name": "Ask Daysi",
+    "tagline": "Su compañera de salud"
+  },
+  "navigation": {
+    "home": "Inicio",
+    "voice": "Voz",
+    "chat": "Chat",
+    "search": "Buscar",
+    "profile": "Perfil"
+  },
+  "buttons": {
+    "getCareNow": "Buscar ayuda",
+    "talkToDaysi": "Hablar con Daysi",
+    "typeToDaysi": "Escribir a Daysi",
+    "findDoctor": "Encontrar un doctor",
+    "findCommunityHelp": "Encontrar ayuda comunitaria",
+    "install": "Instalar",
+    "allow": "Permitir",
+    "notNow": "Ahora no",
+    "sendCode": "Enviar código",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "submit": "Enviar",
+    "continue": "Continuar",
+    "back": "Atrás",
+    "retry": "Reintentar",
+    "close": "Cerrar",
+    "directions": "Direcciones",
+    "claimProfile": "Reclamar este perfil",
+    "instantVerify": "Verificación instantánea (demo)"
+  },
+  "home": {
+    "welcome": "Bienvenido/a a Ask Daysi",
+    "subtitle": "Encuentre proveedores de salud, obtenga orientación de IA y acceda a recursos comunitarios",
+    "quickActions": "Acciones Rápidas",
+    "recentActivity": "Actividad Reciente",
+    "emergencyNotice": "Para emergencias, llame al 911 inmediatamente"
+  },
+  "voice": {
+    "title": "Asistente de Voz",
+    "subtitle": "Hable naturalmente para recibir orientación médica personalizada",
+    "micButton": "Toque para hablar",
+    "listening": "Escuchando...",
+    "processing": "Procesando...",
+    "transcript": "Transcripción",
+    "useLocation": "Usar mi ubicación",
+    "languageLocked": "Idioma bloqueado",
+    "nextSteps": "Próximos pasos",
+    "nearbyMatches": "Opciones cercanas"
+  },
+  "chat": {
+    "title": "Chat de Texto",
+    "subtitle": "Escriba sus preguntas para recibir asistencia médica instantánea",
+    "placeholder": "Escriba su mensaje...",
+    "send": "Enviar",
+    "thinking": "Daysi está pensando...",
+    "suggestions": "Sugerencias"
+  },
+  "search": {
+    "providers": {
+      "title": "Encontrar Proveedores",
+      "subtitle": "Busque profesionales de la salud cerca de usted",
+      "filters": "Filtros",
+      "borough": "Distrito",
+      "specialty": "Especialidad",
+      "language": "Idioma",
+      "insurance": "Seguro",
+      "useMyLocation": "Usar mi ubicación",
+      "noResults": "No se encontraron proveedores que coincidan con sus criterios",
+      "callNow": "Llamar ahora",
+      "milesAway": "millas de distancia"
+    },
+    "resources": {
+      "title": "Encontrar Recursos",
+      "subtitle": "Descubra servicios comunitarios y programas de apoyo",
+      "category": "Categoría",
+      "noResults": "No se encontraron recursos que coincidan con sus criterios"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar Sesión",
+      "subtitle": "Ingrese su número de teléfono o correo electrónico para continuar",
+      "tabs": {
+        "phone": "Teléfono",
+        "email": "Correo"
+      },
+      "placeholders": {
+        "phone": "Ingrese su número de teléfono",
+        "email": "Ingrese su dirección de correo electrónico",
+        "code": "Ingrese el código de 6 dígitos"
+      },
+      "codeSent": "Código enviado a",
+      "codeInstructions": "Ingrese el código de verificación que le enviamos",
+      "resendCode": "¿No lo recibió? Reenviar código",
+      "invalidCode": "Código inválido. Por favor, inténtelo de nuevo."
+    }
+  },
+  "profile": {
+    "title": "Perfil",
+    "subtitle": "Administre su cuenta y preferencias",
+    "personalInfo": "Información Personal",
+    "preferences": "Preferencias",
+    "privacy": "Privacidad y Consentimiento",
+    "fields": {
+      "name": "Nombre Completo",
+      "email": "Correo Electrónico",
+      "phone": "Teléfono",
+      "language": "Idioma Preferido",
+      "borough": "Distrito",
+      "zipCode": "Código Postal"
+    },
+    "consent": {
+      "shareLocation": "Compartir ubicación para recomendaciones cercanas",
+      "receiveSms": "Recibir actualizaciones y recordatorios por SMS",
+      "receiveEmail": "Recibir actualizaciones por correo electrónico"
+    },
+    "signOut": "Cerrar Sesión"
+  },
+  "admin": {
+    "title": "Panel de Administración",
+    "overview": "Resumen del Sistema",
+    "stats": {
+      "users": "Usuarios Totales",
+      "providers": "Proveedores",
+      "resources": "Recursos",
+      "queries": "Consultas Recientes",
+      "errorRate": "Tasa de Error"
+    },
+    "recentActivity": "Actividad Reciente",
+    "systemHealth": "Salud del Sistema"
+  },
+  "providerClaim": {
+    "title": "Reclamar Perfil de Proveedor",
+    "subtitle": "Verifique su práctica médica con Ask Daysi",
+    "searchPrompt": "Busque su práctica o ingrese el ID del Proveedor",
+    "verificationForm": "Información de Verificación",
+    "fields": {
+      "providerId": "ID del Proveedor",
+      "fullName": "Nombre Completo",
+      "email": "Correo Profesional",
+      "phone": "Número de Teléfono",
+      "license": "Número de Licencia",
+      "npi": "Número NPI"
+    },
+    "instructions": "Verificaremos sus credenciales y nos pondremos en contacto con usted en 2-3 días hábiles",
+    "pending": "Reclamo enviado - lo verificaremos pronto",
+    "verified": "Perfil verificado exitosamente"
+  },
+  "location": {
+    "banner": {
+      "title": "¿Podemos usar su ubicación para ordenar la atención cercana?",
+      "subtitle": "Su ubicación se usa solo para recomendaciones basadas en proximidad y no se almacena."
+    },
+    "denied": "Acceso a la ubicación denegado",
+    "error": "No se pudo obtener la ubicación"
+  },
+  "languages": {
+    "english": "Inglés",
+    "spanish": "Español",
+    "chinese": "Chino",
+    "arabic": "Árabe",
+    "french": "Francés",
+    "russian": "Ruso"
+  },
+  "boroughs": {
+    "manhattan": "Manhattan",
+    "brooklyn": "Brooklyn",
+    "queens": "Queens",
+    "bronx": "Bronx",
+    "statenIsland": "Staten Island"
+  },
+  "specialties": {
+    "primaryCare": "Atención Primaria",
+    "pediatrics": "Pediatría",
+    "obgyn": "Ginecología y Obstetricia",
+    "cardiology": "Cardiología",
+    "dermatology": "Dermatología",
+    "mentalHealth": "Salud Mental",
+    "dentistry": "Odontología",
+    "orthopedics": "Ortopedia"
+  },
+  "resourceCategories": {
+    "housing": "Asistencia de Vivienda",
+    "food": "Seguridad Alimentaria",
+    "healthcare": "Acceso a Atención Médica",
+    "legal": "Ayuda Legal",
+    "childcare": "Cuidado Infantil",
+    "elderly": "Cuidado de Ancianos",
+    "mental": "Apoyo de Salud Mental",
+    "substance": "Abuso de Sustancias"
+  },
+  "errors": {
+    "generic": "Algo salió mal. Por favor, inténtelo de nuevo.",
+    "network": "Error de red. Por favor, verifique su conexión.",
+    "timeout": "La solicitud expiró. Por favor, inténtelo de nuevo.",
+    "notFound": "El recurso solicitado no fue encontrado.",
+    "unauthorized": "No está autorizado para acceder a este recurso.",
+    "validation": "Por favor, verifique su entrada e inténtelo de nuevo."
+  },
+  "loading": {
+    "general": "Cargando...",
+    "searching": "Buscando...",
+    "saving": "Guardando...",
+    "sending": "Enviando...",
+    "verifying": "Verificando..."
+  },
+  "empty": {
+    "noProviders": "No se encontraron proveedores de atención médica en esta área.",
+    "noResources": "No se encontraron recursos comunitarios.",
+    "noHistory": "Aún no hay historial de conversación.",
+    "noNotifications": "No hay nuevas notificaciones."
+  }
+}
