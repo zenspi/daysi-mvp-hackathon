@@ -216,18 +216,19 @@ export default function Voice() {
     try {
       const stream = await getMicrophoneStream();
 
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-      mediaRecorderRef.current = mediaRecorder;
+      // Skip audio streaming for now - use text-only mode
+      // const mediaRecorder = new MediaRecorder(stream, {
+      //   mimeType: 'audio/webm;codecs=opus'
+      // });
+      // mediaRecorderRef.current = mediaRecorder;
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(event.data);
-        }
-      };
+      // mediaRecorder.ondataavailable = (event) => {
+      //   if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+      //     wsRef.current.send(event.data);
+      //   }
+      // };
 
-      mediaRecorder.start(100);
+      // mediaRecorder.start(100);
       setIsRecording(true);
       setVoiceStatus('listening');
 
@@ -238,16 +239,10 @@ export default function Voice() {
           event_id: `session_${Date.now()}`,
           type: 'session.update',
           session: {
-            modalities: ['text', 'audio'],
+            modalities: ['text'],
             instructions: `You are Daysi, a helpful healthcare assistant. Keep responses brief and helpful.`,
-            voice: 'alloy',
-            input_audio_format: 'pcm16',
-            output_audio_format: 'pcm16',
             input_audio_transcription: {
               model: 'whisper-1'
-            },
-            turn_detection: {
-              type: 'server_vad'
             }
           }
         }));
