@@ -182,7 +182,7 @@ export default function ResourceSearch() {
     
     // Set user's borough if available
     if (user?.borough) {
-      setFilters(prev => ({ ...prev, borough: user.borough || '' }));
+      setFilters(prev => ({ ...prev, borough: user.borough ?? '' }));
     }
     
     // Perform initial search
