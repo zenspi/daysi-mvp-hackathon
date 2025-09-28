@@ -45,11 +45,18 @@ export default function Voice() {
   const cachedStreamRef = useRef<MediaStream | null>(null);
 
 
-  // Initialize audio context for playback only
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
+  // Initialize audio context for playback only - defer until user interaction
+  const initializePlaybackAudio = useCallback(() => {
+    if (!playbackCtxRef.current && typeof window !== 'undefined') {
+      console.log('[VOICE] Creating AudioContext for playback...');
       playbackCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      console.log('[VOICE] AudioContext initial state:', playbackCtxRef.current.state);
     }
+    return playbackCtxRef.current;
+  }, []);
+
+  // Cleanup audio context
+  useEffect(() => {
     return () => {
       if (playbackCtxRef.current) {
         playbackCtxRef.current.close();
