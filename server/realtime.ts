@@ -8,6 +8,8 @@ interface ActiveConnection {
   browserWS: WebSocket;
   openaiWS: WebSocket | null;
   startTime: number;
+  isInitializing: boolean;
+  initializationAttempts: number;
 }
 
 const activeConnections = new Map<string, ActiveConnection>();
@@ -52,7 +54,9 @@ export function registerRealtime(app: Express, server: Server) {
       id: connectionId,
       browserWS,
       openaiWS: null,
-      startTime: Date.now()
+      startTime: Date.now(),
+      isInitializing: false,
+      initializationAttempts: 0
     };
     activeConnections.set(connectionId, connection);
 
@@ -63,6 +67,25 @@ export function registerRealtime(app: Express, server: Server) {
     }, SESSION_TIMEOUT);
 
     async function initializeOpenAI() {
+      // Prevent double initialization
+      if (connection.isInitializing || connection.openaiWS) {
+        console.log(`[REALTIME] OpenAI already initializing/connected for ${connectionId}`);
+        return;
+      }
+      
+      // Limit retry attempts
+      connection.initializationAttempts++;
+      if (connection.initializationAttempts > 3) {
+        console.log(`[REALTIME] Max initialization attempts reached for ${connectionId}`);
+        browserWS.send(JSON.stringify({ 
+          type: 'error', 
+          message: 'Unable to establish voice connection. Please try again later.' 
+        }));
+        return;
+      }
+      
+      connection.isInitializing = true;
+      
       try {
         const apiKey = process.env.OPENAI_API_KEY;
         if (!apiKey) {
@@ -70,10 +93,11 @@ export function registerRealtime(app: Express, server: Server) {
             type: 'error', 
             message: 'OpenAI API key not configured' 
           }));
+          connection.isInitializing = false;
           return;
         }
 
-        console.log(`[REALTIME] Initializing OpenAI connection for ${connectionId}...`);
+        console.log(`[REALTIME] Initializing OpenAI connection for ${connectionId} (attempt ${connection.initializationAttempts})...`);
         
         const model = process.env.MODEL_REALTIME || 'gpt-4o-realtime-preview';
         const openaiWS = new WebSocket(`wss://api.openai.com/v1/realtime?model=${model}`, {
@@ -87,6 +111,7 @@ export function registerRealtime(app: Express, server: Server) {
 
         openaiWS.on('open', () => {
           console.log(`[REALTIME] OpenAI connection established for ${connectionId}`);
+          connection.isInitializing = false;
           
           // Send initial session configuration
           const sessionConfig = {
@@ -165,9 +190,11 @@ export function registerRealtime(app: Express, server: Server) {
               'OpenAI-Beta': 'realtime=v1'
             }
           });
+          connection.isInitializing = false;
+          connection.openaiWS = null;
           browserWS.send(JSON.stringify({ 
             type: 'error', 
-            message: 'OpenAI connection error: ' + error.message 
+            message: 'Voice connection failed. Please try again.' 
           }));
         });
 
@@ -177,6 +204,9 @@ export function registerRealtime(app: Express, server: Server) {
         console.error(`[REALTIME] 1. Network connectivity to OpenAI servers`);
         console.error(`[REALTIME] 2. API key lacks Realtime API access`);
         console.error(`[REALTIME] 3. Environment firewall restrictions`);
+        
+        connection.isInitializing = false;
+        connection.openaiWS = null;
         
         browserWS.send(JSON.stringify({ 
           type: 'error', 
@@ -240,7 +270,7 @@ export function registerRealtime(app: Express, server: Server) {
           if (message.type === 'start') {
             console.log(`[REALTIME] Start message received for ${connectionId}`);
             // Initialize OpenAI connection if not already done
-            if (!connection.openaiWS) {
+            if (!connection.openaiWS && !connection.isInitializing) {
               console.log(`[REALTIME] Initializing OpenAI connection for ${connectionId}`);
               await initializeOpenAI();
             }
@@ -273,20 +303,12 @@ export function registerRealtime(app: Express, server: Server) {
       cleanup();
     });
 
-    // Initialize OpenAI connection immediately and then send ready when actually ready
-    console.log(`[REALTIME] Browser connected, initializing OpenAI for ${connectionId}`);
-    
-    // Initialize OpenAI connection before sending ready
-    await initializeOpenAI();
-    
-    // Only send ready after OpenAI is connected
-    if (connection.openaiWS && connection.openaiWS.readyState === WebSocket.OPEN) {
-      browserWS.send(JSON.stringify({ 
-        type: 'connection.ready', 
-        connection_id: connectionId 
-      }));
-      console.log(`[REALTIME] Connection ready sent for ${connectionId}`);
-    }
+    // Send initial ready state - OpenAI will be initialized on first use
+    console.log(`[REALTIME] Browser connected: ${connectionId}`);
+    browserWS.send(JSON.stringify({ 
+      type: 'connection.ready', 
+      connection_id: connectionId 
+    }));
   });
 
   // Cleanup old connections periodically
