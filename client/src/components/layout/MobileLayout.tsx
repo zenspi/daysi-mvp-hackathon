@@ -100,6 +100,8 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
       {/* Main Content */}
       <main className="flex-1 pb-16">
         {children}
+        {/* Proactive AI Notifications */}
+        <NotificationCenter />
       </main>
 
       {/* Bottom Navigation - Enhanced with animations and better touch targets */}
