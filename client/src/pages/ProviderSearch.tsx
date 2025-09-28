@@ -40,7 +40,7 @@ export default function ProviderSearch() {
   const { t, language } = useI18n();
   const { user } = useAuth();
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
+  const [, navigate] = useLocation();
   
   // State
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -203,7 +203,7 @@ export default function ProviderSearch() {
     
     // Navigate to Ask Daysi chat using wouter
     setTimeout(() => {
-      setLocation('/chat');
+      navigate('/chat');
     }, 500);
   }, [toast]);
 
