@@ -1328,5 +1328,11 @@ Please respond with JSON in this format:
   app.use(errorHandler);
 
   const httpServer = createServer(app);
+  
+  // Fix HMR WebSocket connection stability by setting proper timeouts
+  httpServer.keepAliveTimeout = 61_000; // 61 seconds
+  httpServer.headersTimeout = 65_000;   // 65 seconds  
+  httpServer.timeout = 0;               // Disable request timeout
+  
   return httpServer;
 }
