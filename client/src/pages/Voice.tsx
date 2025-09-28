@@ -206,8 +206,8 @@ export default function Voice() {
             modalities: ['text', 'audio'],
             instructions: `You are Daysi, a helpful healthcare assistant. Provide personalized healthcare guidance and help find providers and resources. Current language: ${language}${userLocation ? `, User location: ${userLocation.lat}, ${userLocation.lng}` : ''}. Keep responses concise and helpful.`,
             voice: 'alloy',
-            input_audio_format: 'g711_ulaw',
-            output_audio_format: 'g711_ulaw',
+            input_audio_format: 'pcm16',
+            output_audio_format: 'pcm16',
             input_audio_transcription: {
               model: 'whisper-1'
             },
