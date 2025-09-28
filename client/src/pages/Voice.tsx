@@ -67,25 +67,28 @@ export default function Voice() {
 
       ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          
-          if (data.type === 'connection.ready') {
-            console.log('[VOICE] Voice services ready');
-            setConnectionStatus('ready');
-            return;
-          }
-          
-          if (data.type === 'error') {
-            console.error('[VOICE] Server error:', data.error);
-            if (data.error !== 'Voice services temporarily unavailable') {
-              toast({
-                title: 'Voice Error',
-                description: data.error,
-                variant: 'destructive'
-              });
+          // Handle both string and binary data
+          if (typeof event.data === 'string') {
+            const data = JSON.parse(event.data);
+            console.log('[VOICE] Received message:', data.type);
+            
+            if (data.type === 'connection.ready') {
+              console.log('[VOICE] Voice services ready');
+              setConnectionStatus('ready');
+              return;
             }
-            return;
-          }
+            
+            if (data.type === 'error') {
+              console.error('[VOICE] Server error:', data.error);
+              if (data.error !== 'Voice services temporarily unavailable') {
+                toast({
+                  title: 'Voice Error',
+                  description: data.error,
+                  variant: 'destructive'
+                });
+              }
+              return;
+            }
           
           if (data.type === 'response.audio_transcript.done') {
             setCurrentTranscript('');
@@ -131,9 +134,13 @@ export default function Voice() {
             setMessages(prev => [...prev, userMessage]);
             return;
           }
+          } else {
+            // Handle binary audio data (ignore for now)
+            console.log('[VOICE] Received binary data, length:', event.data.size || event.data.length);
+          }
           
         } catch (error) {
-          console.error('[VOICE] Message parse error:', error);
+          console.error('[VOICE] Message parse error:', error, 'Data:', event.data);
         }
       };
 
