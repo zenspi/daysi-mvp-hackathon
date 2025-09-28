@@ -1081,7 +1081,6 @@ Please respond with JSON in this format:
       console.log('=== DAYSI VOICE SESSION START (SERVER) ===');
       console.log(`Language: ${lang} (locked: ${locked})`);
       console.log(`Origin: ${origin}`);
-      console.log(`OpenAI API Key: sk-...${process.env.OPENAI_API_KEY.slice(-4)}`);
       console.log(`Session requested at: ${new Date().toISOString()}`);
       console.log('============================================');
 

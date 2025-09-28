@@ -33,14 +33,28 @@ export default function Voice() {
   const [hasAudioSupport] = useState(() => !!navigator.mediaDevices?.getUserMedia);
   const [microphonePermission, setMicrophonePermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
   
+  // Audio playback for voice responses
+  const audioContextRef = useRef<AudioContext | null>(null);
+  
 
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioContextRef = useRef<{ audioContext: AudioContext, processor: ScriptProcessorNode, source: MediaStreamAudioSourceNode } | null>(null);
   const pendingStartRef = useRef(false);
   const cachedStreamRef = useRef<MediaStream | null>(null);
 
+
+  // Initialize audio context for playback
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    return () => {
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
 
   // Auto-start when ready if user tapped early - debounced to prevent double starts
   useEffect(() => {
@@ -69,6 +83,7 @@ export default function Voice() {
       const wsUrl = `${protocol}//${window.location.host}/realtime`;
       
       const ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer'; // Handle binary audio data
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -79,6 +94,12 @@ export default function Voice() {
       ws.onmessage = (event) => {
         try {
           // Handle both string and binary data
+          if (event.data instanceof ArrayBuffer) {
+            // Handle binary audio data (PCM16 from OpenAI)
+            playAudioBuffer(event.data);
+            return;
+          }
+          
           if (typeof event.data === 'string') {
             const data = JSON.parse(event.data);
             console.log('[VOICE] Received message:', data.type);
@@ -156,9 +177,6 @@ export default function Voice() {
             setMessages(prev => [...prev, userMessage]);
             return;
           }
-          } else {
-            // Handle binary audio data (ignore for now)
-            console.log('[VOICE] Received binary data, length:', event.data.size || event.data.length);
           }
           
         } catch (error) {
@@ -188,6 +206,35 @@ export default function Voice() {
       setConnectionStatus('error');
     }
   }, [toast, language]);
+
+  // Play audio buffer from server (PCM16 24kHz)
+  const playAudioBuffer = useCallback(async (buffer: ArrayBuffer) => {
+    if (!audioContextRef.current) return;
+    
+    try {
+      // Convert PCM16 24kHz to AudioBuffer
+      const pcm16Data = new Int16Array(buffer);
+      const float32Data = new Float32Array(pcm16Data.length);
+      
+      // Convert PCM16 to Float32
+      for (let i = 0; i < pcm16Data.length; i++) {
+        float32Data[i] = pcm16Data[i] / 32768.0;
+      }
+      
+      // Create audio buffer (24kHz mono)
+      const audioBuffer = audioContextRef.current.createBuffer(1, float32Data.length, 24000);
+      audioBuffer.getChannelData(0).set(float32Data);
+      
+      // Play audio
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContextRef.current.destination);
+      source.start();
+      
+    } catch (error) {
+      console.warn('[VOICE] Audio playback error:', error);
+    }
+  }, []);
 
   // Check microphone permissions
   const checkMicrophonePermission = useCallback(async () => {
