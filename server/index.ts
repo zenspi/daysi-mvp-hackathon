@@ -40,8 +40,8 @@ const dbConnected = dbInitialized ? await testConnection() : false;
 // Configure storage mode based on database connectivity
 setStorageMode(dbConnected);
 
-// Register Realtime WebSocket functionality
-registerRealtime(app, httpServer);
+// Register Realtime WebSocket functionality - TEMPORARILY DISABLED for debugging
+// registerRealtime(app, httpServer);
 
 // Start the server
 httpServer.listen(config.PORT, config.HOST, () => {

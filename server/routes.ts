@@ -4,7 +4,7 @@ import { Router } from "express";
 import cors from "cors";
 import { storage } from "./storage";
 import { insertServerLogSchema, insertUserSchema, insertPulseSchema, insertProviderClaimSchema, users, providers, resources, pulses, providerClaims } from "@shared/schema";
-import { ZodError } from "zod";
+import { ZodError, z } from "zod";
 import { config, isDevelopment } from "./config";
 import { createClient } from "@supabase/supabase-js";
 import { sql, and, ilike, arrayContains, asc, desc } from "drizzle-orm";

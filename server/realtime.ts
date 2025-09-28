@@ -241,8 +241,18 @@ export function registerRealtime(app: Express, server: Server) {
             console.log(`[REALTIME] Forwarding session update for ${connectionId}`);
           }
 
-          // Forward to OpenAI
-          connection.openaiWS.send(JSON.stringify(message));
+          // Initialize OpenAI connection if not already done and this is a voice request
+          if (message.type === 'session.update' && !connection.openaiWS) {
+            console.log(`[REALTIME] Initializing OpenAI connection on demand for ${connectionId}`);
+            await initializeOpenAI();
+          }
+
+          // Forward to OpenAI only if connected
+          if (connection.openaiWS && connection.openaiWS.readyState === WebSocket.OPEN) {
+            connection.openaiWS.send(JSON.stringify(message));
+          } else {
+            console.log(`[REALTIME] OpenAI not connected, cannot forward message for ${connectionId}`);
+          }
         }
       } catch (error) {
         console.error(`[REALTIME] Error processing browser message for ${connectionId}:`, error);
@@ -259,25 +269,14 @@ export function registerRealtime(app: Express, server: Server) {
       cleanup();
     });
 
-    // Initialize OpenAI connection immediately
-    console.log(`[REALTIME] Initializing OpenAI connection for ${connectionId}`);
-    await initializeOpenAI();
+    // Don't initialize OpenAI connection immediately - wait for explicit request
+    console.log(`[REALTIME] Browser connected, waiting for explicit OpenAI initialization for ${connectionId}`);
     
-    if (connection.openaiWS && connection.openaiWS.readyState === WebSocket.OPEN) {
-      console.log(`[REALTIME] OpenAI ready, sending connection.ready to browser ${connectionId}`);
-      // Send ready message to browser only after OpenAI is connected
-      browserWS.send(JSON.stringify({ 
-        type: 'connection.ready', 
-        connection_id: connectionId 
-      }));
-    } else {
-      console.error(`[REALTIME] Failed to establish OpenAI connection for ${connectionId}`);
-      browserWS.send(JSON.stringify({ 
-        type: 'error', 
-        message: 'Voice services unavailable' 
-      }));
-      browserWS.close();
-    }
+    // Send ready message to browser without OpenAI connection
+    browserWS.send(JSON.stringify({ 
+      type: 'connection.ready', 
+      connection_id: connectionId 
+    }));
   });
 
   // Cleanup old connections periodically
