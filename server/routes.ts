@@ -1121,7 +1121,7 @@ Please respond with JSON in this format:
   });
 
   // Environment Diagnostics Route
-  app.get("/api/diag", asyncHandler(async (req: Request, res: Response) => {
+  askRouter.get("/diag", asyncHandler(async (req: Request, res: Response) => {
     const env_status = {
       OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
       SUPABASE_URL: !!process.env.SUPABASE_URL,
