@@ -29,21 +29,21 @@ export default function Voice() {
   const { toast } = useToast();
   
   // Connection and audio state
-  const [connectionStatus, setConnectionStatus] = useState&lt;ConnectionStatus&gt;('disconnected');
-  const [voiceStatus, setVoiceStatus] = useState&lt;VoiceStatus&gt;('idle');
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
   const [isRecording, setIsRecording] = useState(false);
   const [currentTranscript, setCurrentTranscript] = useState('');
   const [textInput, setTextInput] = useState('');
-  const [messages, setMessages] = useState&lt;Message[]&gt;([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [useLocation, setUseLocation] = useState(false);
-  const [userLocation, setUserLocation] = useState&lt;{lat: number, lng: number} | null&gt;(null);
+  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   
   // Audio and WebSocket refs
-  const wsRef = useRef&lt;WebSocket | null&gt;(null);
-  const mediaRecorderRef = useRef&lt;MediaRecorder | null&gt;(null);
-  const audioContextRef = useRef&lt;AudioContext | null&gt;(null);
-  const audioChunksRef = useRef&lt;Blob[]&gt;([]);
-  const connectionIdRef = useRef&lt;string | null&gt;(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const connectionIdRef = useRef<string | null>(null);
   
   // Check audio support
   const hasAudioSupport = typeof navigator !== 'undefined' && 

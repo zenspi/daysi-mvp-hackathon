@@ -1,9 +1,10 @@
-import { type User, type InsertUser, type ServerLog, type InsertServerLog, type ServerConfig, type InsertServerConfig } from "@shared/schema";
+import { type User, type InsertUser, type ServerLog, type InsertServerLog, type ServerConfig, type InsertServerConfig, type ProviderClaim, type InsertProviderClaim, type Provider } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByPhone(phone: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   
   getServerLogs(): Promise<ServerLog[]>;
@@ -11,16 +12,28 @@ export interface IStorage {
   
   getServerConfig(): Promise<ServerConfig | undefined>;
   updateServerConfig(config: InsertServerConfig): Promise<ServerConfig>;
+  
+  // Provider Claims
+  getProviderClaim(id: string): Promise<ProviderClaim | undefined>;
+  getProviderClaimsByUser(userId: string): Promise<ProviderClaim[]>;
+  getProviderClaimsByProvider(providerId: string): Promise<ProviderClaim[]>;
+  createProviderClaim(claim: InsertProviderClaim): Promise<ProviderClaim>;
+  updateProviderClaim(id: string, updates: Partial<ProviderClaim>): Promise<ProviderClaim | undefined>;
+  
+  // Check if provider is already claimed
+  isProviderClaimed(providerId: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
   private serverLogs: Map<string, ServerLog>;
   private serverConfig: ServerConfig | undefined;
+  private providerClaims: Map<string, ProviderClaim>;
 
   constructor() {
     this.users = new Map();
     this.serverLogs = new Map();
+    this.providerClaims = new Map();
     
     // Initialize with default server config
     this.serverConfig = {
@@ -60,15 +73,34 @@ export class MemStorage implements IStorage {
     return this.users.get(id);
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  async getUserByEmail(email: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(
-      (user) => user.username === username,
+      (user) => user.email === email,
+    );
+  }
+
+  async getUserByPhone(phone: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(
+      (user) => user.phone === phone,
     );
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
+    const user: User = { 
+      name: null,
+      email: null,
+      phone: null,
+      language: null,
+      borough: null,
+      zip: null,
+      latitude: null,
+      longitude: null,
+      role: 'user',
+      ...insertUser, 
+      id, 
+      createdAt: new Date() 
+    };
     this.users.set(id, user);
     return user;
   }
@@ -98,6 +130,62 @@ export class MemStorage implements IStorage {
     const id = this.serverConfig?.id || randomUUID();
     this.serverConfig = { ...config, id };
     return this.serverConfig;
+  }
+
+  // Provider Claims
+  async getProviderClaim(id: string): Promise<ProviderClaim | undefined> {
+    return this.providerClaims.get(id);
+  }
+
+  async getProviderClaimsByUser(userId: string): Promise<ProviderClaim[]> {
+    return Array.from(this.providerClaims.values()).filter(
+      (claim) => claim.userId === userId
+    );
+  }
+
+  async getProviderClaimsByProvider(providerId: string): Promise<ProviderClaim[]> {
+    return Array.from(this.providerClaims.values()).filter(
+      (claim) => claim.providerId === providerId
+    );
+  }
+
+  async createProviderClaim(insertClaim: InsertProviderClaim): Promise<ProviderClaim> {
+    const id = randomUUID();
+    const claim: ProviderClaim = {
+      status: 'pending',
+      ...insertClaim,
+      id,
+      submittedAt: new Date(),
+      verifiedAt: null,
+      notes: null,
+    };
+    this.providerClaims.set(id, claim);
+    return claim;
+  }
+
+  async updateProviderClaim(id: string, updates: Partial<ProviderClaim>): Promise<ProviderClaim | undefined> {
+    const claim = this.providerClaims.get(id);
+    if (!claim) return undefined;
+
+    const updatedClaim: ProviderClaim = {
+      ...claim,
+      ...updates,
+    };
+
+    // Manage verifiedAt timestamp based on status changes
+    if (updates.status === 'verified' && claim.status !== 'verified') {
+      updatedClaim.verifiedAt = new Date();
+    } else if (updates.status && updates.status !== 'verified') {
+      updatedClaim.verifiedAt = null;
+    }
+
+    this.providerClaims.set(id, updatedClaim);
+    return updatedClaim;
+  }
+
+  async isProviderClaimed(providerId: string): Promise<boolean> {
+    const claims = await this.getProviderClaimsByProvider(providerId);
+    return claims.some(claim => claim.status === 'verified');
   }
 }
 
@@ -142,10 +230,17 @@ class HybridStorage implements IStorage {
     );
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  async getUserByEmail(email: string): Promise<User | undefined> {
     return this.withFallback(
-      () => this.dbStorage.getUserByUsername(username),
-      () => this.memStorage.getUserByUsername(username)
+      () => this.dbStorage.getUserByEmail(email),
+      () => this.memStorage.getUserByEmail(email)
+    );
+  }
+
+  async getUserByPhone(phone: string): Promise<User | undefined> {
+    return this.withFallback(
+      () => this.dbStorage.getUserByPhone(phone),
+      () => this.memStorage.getUserByPhone(phone)
     );
   }
 
@@ -181,6 +276,49 @@ class HybridStorage implements IStorage {
     return this.withFallback(
       () => this.dbStorage.updateServerConfig(config),
       () => this.memStorage.updateServerConfig(config)
+    );
+  }
+
+  // Provider Claims
+  async getProviderClaim(id: string): Promise<ProviderClaim | undefined> {
+    return this.withFallback(
+      () => this.dbStorage.getProviderClaim(id),
+      () => this.memStorage.getProviderClaim(id)
+    );
+  }
+
+  async getProviderClaimsByUser(userId: string): Promise<ProviderClaim[]> {
+    return this.withFallback(
+      () => this.dbStorage.getProviderClaimsByUser(userId),
+      () => this.memStorage.getProviderClaimsByUser(userId)
+    );
+  }
+
+  async getProviderClaimsByProvider(providerId: string): Promise<ProviderClaim[]> {
+    return this.withFallback(
+      () => this.dbStorage.getProviderClaimsByProvider(providerId),
+      () => this.memStorage.getProviderClaimsByProvider(providerId)
+    );
+  }
+
+  async createProviderClaim(claim: InsertProviderClaim): Promise<ProviderClaim> {
+    return this.withFallback(
+      () => this.dbStorage.createProviderClaim(claim),
+      () => this.memStorage.createProviderClaim(claim)
+    );
+  }
+
+  async updateProviderClaim(id: string, updates: Partial<ProviderClaim>): Promise<ProviderClaim | undefined> {
+    return this.withFallback(
+      () => this.dbStorage.updateProviderClaim(id, updates),
+      () => this.memStorage.updateProviderClaim(id, updates)
+    );
+  }
+
+  async isProviderClaimed(providerId: string): Promise<boolean> {
+    return this.withFallback(
+      () => this.dbStorage.isProviderClaimed(providerId),
+      () => this.memStorage.isProviderClaimed(providerId)
     );
   }
 }

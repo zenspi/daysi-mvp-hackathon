@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { Router } from "express";
 import cors from "cors";
 import { storage } from "./storage";
-import { insertServerLogSchema, insertUserSchema, insertPulseSchema, users, providers, resources, pulses } from "@shared/schema";
+import { insertServerLogSchema, insertUserSchema, insertPulseSchema, insertProviderClaimSchema, users, providers, resources, pulses, providerClaims } from "@shared/schema";
 import { ZodError } from "zod";
 import { config, isDevelopment } from "./config";
 import { createClient } from "@supabase/supabase-js";
@@ -171,6 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const aiRouter = Router();
   const askRouter = Router();
   const voiceRouter = Router();
+  const providerClaimsRouter = Router();
 
   // Server Management Routes
   serverRouter.get("/config", asyncHandler(async (req: Request, res: Response) => {
@@ -1159,6 +1160,153 @@ Please respond with JSON in this format:
     }
   }));
 
+  // Provider Claims Routes
+  providerClaimsRouter.post("/", asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const validatedClaim = insertProviderClaimSchema.parse(req.body);
+      
+      // Validate that the user exists before creating claim
+      const user = await storage.getUser(validatedClaim.userId);
+      if (!user) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid user ID"
+        });
+      }
+      
+      // Check if provider is already claimed by someone else
+      const isAlreadyClaimed = await storage.isProviderClaimed(validatedClaim.providerId);
+      if (isAlreadyClaimed) {
+        return res.status(409).json({
+          success: false,
+          error: "This provider is already verified by another user"
+        });
+      }
+      
+      // Check for existing pending/verified claims for this provider by this user
+      const existingClaims = await storage.getProviderClaimsByUser(validatedClaim.userId);
+      const existingClaimForProvider = existingClaims.find(
+        claim => claim.providerId === validatedClaim.providerId && 
+        (claim.status === 'pending' || claim.status === 'verified')
+      );
+      
+      if (existingClaimForProvider) {
+        return res.status(409).json({
+          success: false,
+          error: "You already have a claim for this provider"
+        });
+      }
+      
+      const claim = await storage.createProviderClaim(validatedClaim);
+      res.status(201).json({ success: true, data: claim });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        res.status(400).json({ 
+          success: false, 
+          error: "Validation error",
+          details: error.errors 
+        });
+      } else {
+        throw error;
+      }
+    }
+  }));
+
+  providerClaimsRouter.get("/:id", asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const claim = await storage.getProviderClaim(id);
+    
+    if (!claim) {
+      throw new AppError("Provider claim not found", 404);
+    }
+    
+    res.json({ success: true, data: claim });
+  }));
+
+  providerClaimsRouter.get("/user/:userId", asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    
+    // Validate that the user exists
+    const user = await storage.getUser(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found"
+      });
+    }
+    
+    const claims = await storage.getProviderClaimsByUser(userId);
+    res.json({ success: true, data: claims });
+  }));
+
+  providerClaimsRouter.get("/provider/:providerId", asyncHandler(async (req: Request, res: Response) => {
+    const { providerId } = req.params;
+    const claims = await storage.getProviderClaimsByProvider(providerId);
+    res.json({ success: true, data: claims });
+  }));
+
+  providerClaimsRouter.patch("/:id", asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { status, notes } = req.body;
+    
+    // Get current claim first
+    const currentClaim = await storage.getProviderClaim(id);
+    if (!currentClaim) {
+      throw new AppError("Provider claim not found", 404);
+    }
+    
+    // Validate status if provided using Zod enum validation
+    const statusSchema = z.enum(['pending', 'verified', 'rejected']).optional();
+    try {
+      if (status !== undefined) {
+        statusSchema.parse(status);
+      }
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid status. Must be 'pending', 'verified', or 'rejected'"
+      });
+    }
+    
+    // Business rule: If verifying, ensure provider isn't already verified by someone else
+    if (status === 'verified') {
+      const isAlreadyClaimed = await storage.isProviderClaimed(currentClaim.providerId);
+      if (isAlreadyClaimed) {
+        const existingVerifiedClaims = await storage.getProviderClaimsByProvider(currentClaim.providerId);
+        const otherVerifiedClaim = existingVerifiedClaims.find(claim => 
+          claim.status === 'verified' && claim.id !== id
+        );
+        
+        if (otherVerifiedClaim) {
+          return res.status(409).json({
+            success: false,
+            error: "This provider is already verified by another user"
+          });
+        }
+      }
+    }
+    
+    // For verification, allow updating status and notes
+    const updates: any = {};
+    if (status) updates.status = status;
+    if (notes !== undefined) updates.notes = notes;
+    // Note: verifiedAt will be handled automatically by storage layer
+    
+    const updatedClaim = await storage.updateProviderClaim(id, updates);
+    
+    if (!updatedClaim) {
+      throw new AppError("Provider claim not found", 404);
+    }
+    
+    res.json({ success: true, data: updatedClaim });
+  }));
+
+  providerClaimsRouter.get("/check/:providerId", asyncHandler(async (req: Request, res: Response) => {
+    const { providerId } = req.params;
+    const isClaimed = await storage.isProviderClaimed(providerId);
+    res.json({ success: true, data: { isClaimed } });
+  }));
+
   // Mount routers
   apiRouter.use("/server", serverRouter);
   apiRouter.use("/health", healthRouter);
@@ -1169,6 +1317,7 @@ Please respond with JSON in this format:
   apiRouter.use("/ai", aiRouter);
   apiRouter.use("/ask", askRouter);
   apiRouter.use("/voice", voiceRouter);
+  apiRouter.use("/provider-claims", providerClaimsRouter);
   app.use("/api", apiRouter);
   app.use("/health", healthRouter); // Also mount health directly for k8s compatibility
 

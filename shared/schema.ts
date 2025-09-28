@@ -78,6 +78,21 @@ export const pulses = pgTable("pulses", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const providerClaims = pgTable("provider_claims", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerId: varchar("provider_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  license: text("license").notNull(),
+  npi: text("npi").notNull(),
+  status: text("status", { enum: ["pending", "verified", "rejected"] }).default("pending"),
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  verifiedAt: timestamp("verified_at"),
+  notes: text("notes"),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -107,6 +122,12 @@ export const insertPulseSchema = createInsertSchema(pulses).omit({
   createdAt: true,
 });
 
+export const insertProviderClaimSchema = createInsertSchema(providerClaims).omit({
+  id: true,
+  submittedAt: true,
+  verifiedAt: true,
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
@@ -124,6 +145,9 @@ export type Resource = typeof resources.$inferSelect;
 
 export type InsertPulse = z.infer<typeof insertPulseSchema>;
 export type Pulse = typeof pulses.$inferSelect;
+
+export type InsertProviderClaim = z.infer<typeof insertProviderClaimSchema>;
+export type ProviderClaim = typeof providerClaims.$inferSelect;
 
 // API Response Types
 export const serverStatusResponseSchema = z.object({
