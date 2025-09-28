@@ -150,13 +150,24 @@
   },
   "admin": {
     "title": "Admin Dashboard",
+    "subtitle": "Monitor platform performance and user engagement",
     "overview": "System Overview",
+    "accessBadge": "Admin Access",
+    "lastUpdated": "Last updated",
     "stats": {
-      "users": "Total Users",
-      "providers": "Providers",
-      "resources": "Resources",
+      "totalUsers": "Total Platform Users",
+      "users": "Registered Users",
+      "providers": "Healthcare Providers",
+      "resources": "Community Resources",
       "queries": "Recent Queries",
       "errorRate": "Error Rate"
+    },
+    "sections": {
+      "platformHealth": "Platform Health",
+      "systemStatus": "System Status"
+    },
+    "insights": {
+      "title": "Data Insights"
     },
     "recentActivity": "Recent Activity",
     "systemHealth": "System Health"

@@ -150,13 +150,24 @@
   },
   "admin": {
     "title": "Panel de Administración",
+    "subtitle": "Monitorear el rendimiento de la plataforma y la participación del usuario",
     "overview": "Resumen del Sistema",
+    "accessBadge": "Acceso de Administrador",
+    "lastUpdated": "Última actualización",
     "stats": {
-      "users": "Usuarios Totales",
-      "providers": "Proveedores",
-      "resources": "Recursos",
+      "totalUsers": "Usuarios Totales de la Plataforma",
+      "users": "Usuarios Registrados",
+      "providers": "Proveedores de Atención Médica",
+      "resources": "Recursos Comunitarios",
       "queries": "Consultas Recientes",
       "errorRate": "Tasa de Error"
+    },
+    "sections": {
+      "platformHealth": "Salud de la Plataforma",
+      "systemStatus": "Estado del Sistema"
+    },
+    "insights": {
+      "title": "Perspectivas de Datos"
     },
     "recentActivity": "Actividad Reciente",
     "systemHealth": "Salud del Sistema"
