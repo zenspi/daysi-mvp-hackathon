@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Home, Mic, MessageCircle, Search, User, Download, Stethoscope, Heart } from "lucide-react";
 import { useI18n, getLanguageInfo } from "@/contexts/I18nContext";
+import { NotificationCenter } from "@/components/proactive/NotificationCenter";
 
 interface MobileLayoutProps {
   children: React.ReactNode;
