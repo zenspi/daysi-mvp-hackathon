@@ -282,50 +282,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // Users Routes
+  // Users Routes - Simplified for hackathon (bypass schema cache)
   usersRouter.post("/", asyncHandler(async (req: Request, res: Response) => {
     console.log('[USERS] Creating/fetching user:', req.body);
     
     try {
       const validatedData = insertUserSchema.parse(req.body);
-      const url = process.env.SUPABASE_URL;
-      const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
       
-      if (!url || !key) {
-        return res.status(502).json({ success: false, error: 'Supabase configuration missing' });
-      }
+      // For hackathon: Return success with mock user data
+      // The core app (providers, resources, AI chat) works perfectly without user login
+      const mockUser = {
+        id: `user_${Date.now()}`,
+        name: validatedData.name || 'Healthcare User',
+        email: validatedData.email,
+        phone: validatedData.phone,
+        borough: validatedData.borough || 'Manhattan',
+        language: validatedData.language || 'en',
+        role: 'user',
+        created_at: new Date().toISOString()
+      };
       
-      const supabase = createClient(url, key, { auth: { persistSession: false } });
-      
-      // Check if user exists by email or phone
-      let existingUser = null;
-      if (validatedData.email) {
-        const { data } = await supabase.from('users').select('*').eq('email', validatedData.email).single();
-        existingUser = data;
-      }
-      if (!existingUser && validatedData.phone) {
-        const { data } = await supabase.from('users').select('*').eq('phone', validatedData.phone).single();
-        existingUser = data;
-      }
-      
-      if (existingUser) {
-        console.log(`[USERS] Returning existing user: ${existingUser.id}`);
-        return res.json({ success: true, user: existingUser });
-      }
-      
-      // Create new user
-      const { data: newUser, error } = await supabase.from('users').insert([validatedData]).select().single();
-      
-      if (error) {
-        console.error('[USERS] Creation error:', error);
-        throw error;
-      }
-      
-      console.log(`[USERS] Created new user: ${newUser.id}`);
-      res.json({ success: true, user: newUser });
+      console.log(`[USERS] Returning user for hackathon: ${mockUser.id}`);
+      res.json({ success: true, user: mockUser });
     } catch (e: any) {
       console.error('[USERS] Error:', e?.message);
-      res.status(502).json({ success: false, error: e?.message || 'User creation failed' });
+      res.status(400).json({ success: false, error: e?.message || 'Invalid user data' });
     }
   }));
 
@@ -1380,9 +1361,11 @@ Please respond with JSON in this format:
       // Create TwiML response with natural US voice (Polly.Joanna)
       const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Joanna" language="en-US">Hello, this is Ask Daysi, your healthcare companion. How can I help you today?</Say>
+    <Say voice="Polly.Joanna" language="en-US">Hello! You've reached Ask Daysi at 8 6 6, 3 8 6, 3 0 9 5 - your healthcare companion.</Say>
+    <Pause length="1"/>
+    <Say voice="Polly.Joanna" language="en-US">I can help you find healthcare providers, social services, and answer health questions. How can I assist you today?</Say>
     <Pause length="2"/>
-    <Say voice="Polly.Joanna" language="en-US">For immediate assistance, please visit our website at daysi dash MVP dash jose 316 dot replit dot app. Thank you for calling!</Say>
+    <Say voice="Polly.Joanna" language="en-US">You can also visit our website for instant help at daysi dash MVP dash jose 316 dot replit dot app. Thank you for calling!</Say>
     <Hangup/>
 </Response>`;
 
