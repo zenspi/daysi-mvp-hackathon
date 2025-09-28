@@ -984,9 +984,9 @@ class HealthcareVoiceAssistant {
                 this.controlChannel.send(JSON.stringify(ping));
                 console.log('📡 Keepalive ping sent');
                 
-                // Check token expiry
-                if (this.tokenExpiryTime && Date.now() > this.tokenExpiryTime) {
-                    console.log('⚠️ Token expired, reconnecting...');
+                // HOTFIX: Renew token at 4:30 minutes (before 5min expiry)
+                if (this.tokenExpiryTime && Date.now() > (this.tokenExpiryTime - 30000)) {
+                    console.log('⚠️ Token renewal at 4:30 minutes...');
                     this.renewConnection();
                 }
             } else {
