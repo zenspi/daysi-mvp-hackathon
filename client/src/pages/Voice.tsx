@@ -201,37 +201,49 @@ export default function Voice() {
     }
     
     try {
-      // Ensure AudioContext is resumed (required for autoplay policy)
+      // Force AudioContext resume with user interaction
       if (playbackCtxRef.current.state === 'suspended') {
-        console.log('[VOICE] Resuming suspended AudioContext');
+        console.log('[VOICE] AudioContext suspended, attempting resume...');
         await playbackCtxRef.current.resume();
+        console.log('[VOICE] AudioContext state after resume:', playbackCtxRef.current.state);
       }
       
       console.log(`[VOICE] Playing audio buffer: ${buffer.byteLength} bytes`);
+      console.log('[VOICE] AudioContext state:', playbackCtxRef.current.state);
       
       // Convert PCM16 24kHz to AudioBuffer
       const pcm16Data = new Int16Array(buffer);
       const float32Data = new Float32Array(pcm16Data.length);
       
-      // Convert PCM16 to Float32
+      // Convert PCM16 to Float32 with volume boost
       for (let i = 0; i < pcm16Data.length; i++) {
-        float32Data[i] = pcm16Data[i] / 32768.0;
+        float32Data[i] = (pcm16Data[i] / 32768.0) * 2.0; // 2x volume boost
       }
       
       // Create audio buffer (24kHz mono)
       const audioBuffer = playbackCtxRef.current.createBuffer(1, float32Data.length, 24000);
       audioBuffer.getChannelData(0).set(float32Data);
       
-      // Play audio
+      // Create gain node for volume control
+      const gainNode = playbackCtxRef.current.createGain();
+      gainNode.gain.value = 0.8; // 80% volume
+      
+      // Play audio with gain
       const source = playbackCtxRef.current.createBufferSource();
       source.buffer = audioBuffer;
-      source.connect(playbackCtxRef.current.destination);
-      source.start();
+      source.connect(gainNode);
+      gainNode.connect(playbackCtxRef.current.destination);
       
-      console.log('[VOICE] Audio playback started');
+      // Add event listeners for debugging
+      source.onended = () => {
+        console.log('[VOICE] Audio playback finished');
+      };
+      
+      source.start();
+      console.log('[VOICE] Audio playback started successfully');
       
     } catch (error) {
-      console.warn('[VOICE] Audio playback error:', error);
+      console.error('[VOICE] Audio playback error:', error);
     }
   }, []);
 
@@ -279,6 +291,18 @@ export default function Voice() {
     }
 
     console.log('[VOICE] Starting voice session...');
+    
+    // Force AudioContext resume on user interaction (critical for audio playback)
+    if (playbackCtxRef.current && playbackCtxRef.current.state === 'suspended') {
+      console.log('[VOICE] Resuming AudioContext on user interaction...');
+      try {
+        await playbackCtxRef.current.resume();
+        console.log('[VOICE] AudioContext resumed successfully, state:', playbackCtxRef.current.state);
+      } catch (error) {
+        console.error('[VOICE] Failed to resume AudioContext:', error);
+      }
+    }
+    
     try {
       const stream = await getMicrophoneStream();
 
@@ -372,6 +396,48 @@ export default function Voice() {
     audio.play().catch(error => {
       console.error('[VOICE] Audio playback failed:', error);
     });
+  }, []);
+
+  // Test audio playback with a simple tone
+  const testAudio = useCallback(async () => {
+    if (!playbackCtxRef.current) {
+      console.warn('[VOICE] No audio context for test');
+      return;
+    }
+
+    try {
+      // Resume AudioContext if suspended
+      if (playbackCtxRef.current.state === 'suspended') {
+        console.log('[AUDIO TEST] Resuming suspended AudioContext...');
+        await playbackCtxRef.current.resume();
+      }
+
+      console.log('[AUDIO TEST] AudioContext state:', playbackCtxRef.current.state);
+
+      // Generate a 440Hz tone for 0.5 seconds
+      const sampleRate = playbackCtxRef.current.sampleRate;
+      const duration = 0.5;
+      const samples = sampleRate * duration;
+      
+      const audioBuffer = playbackCtxRef.current.createBuffer(1, samples, sampleRate);
+      const channelData = audioBuffer.getChannelData(0);
+      
+      // Generate sine wave
+      for (let i = 0; i < samples; i++) {
+        channelData[i] = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.3;
+      }
+      
+      // Play the tone
+      const source = playbackCtxRef.current.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(playbackCtxRef.current.destination);
+      source.start();
+      
+      console.log('[AUDIO TEST] Playing test tone (440Hz)');
+      
+    } catch (error) {
+      console.error('[AUDIO TEST] Failed:', error);
+    }
   }, []);
 
   // Initialize on mount - auto-connect and auto-request location

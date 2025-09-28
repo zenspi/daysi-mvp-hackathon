@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Send, Bot, User, MapPin, Clock, Phone, ExternalLink, Lightbulb, Loader2 } from 'lucide-react';
+import { Send, Bot, User, MapPin, Clock, Phone, ExternalLink, Loader2, Calendar } from 'lucide-react';
 import { useI18n } from '@/contexts/I18nContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -20,7 +20,6 @@ interface ChatMessage {
   language?: string;
   intent?: string;
   results?: Provider[] | Resource[];
-  pulseSuggestion?: string;
 }
 
 interface Provider {
@@ -54,7 +53,6 @@ export default function Chat() {
   const [isLoading, setIsLoading] = useState(false);
   const [useLocation, setUseLocation] = useState(false);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [pulseConsent, setPulseConsent] = useState(false);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -150,8 +148,6 @@ export default function Chat() {
         };
       }
       
-      // Add pulse consent
-      requestPayload.pulseConsent = pulseConsent;
       
       console.log('[CHAT] Sending request:', requestPayload);
       
@@ -178,8 +174,7 @@ export default function Chat() {
           timestamp: new Date(),
           language: data.reply_lang,
           intent: data.intent,
-          results: data.results || [],
-          pulseSuggestion: data.pulse_suggestion
+          results: data.results || []
         };
         
         setMessages(prev => [...prev, assistantMessage]);
@@ -207,7 +202,20 @@ export default function Chat() {
     } finally {
       setIsLoading(false);
     }
-  }, [inputText, isLoading, language, user, useLocation, userLocation, pulseConsent, toast, t]);
+  }, [inputText, isLoading, language, user, useLocation, userLocation, toast, t]);
+
+  // Handle scheduling appointment
+  const handleScheduleAppointment = useCallback((provider: Provider) => {
+    // For now, open a booking URL or show scheduling options
+    // This could integrate with external scheduling services like Zocdoc
+    const bookingUrl = `https://www.zocdoc.com/search?filters=%5B%5D&insurances=%5B%5D&query=${encodeURIComponent(provider.name)}&address=${encodeURIComponent(provider.address)}`;
+    window.open(bookingUrl, '_blank');
+    
+    toast({
+      title: 'Opening Scheduling',
+      description: `Redirecting to book an appointment with ${provider.name}`,
+    });
+  }, [toast]);
 
   // Handle input key press
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
@@ -252,15 +260,27 @@ export default function Chat() {
           </div>
         )}
         
-        <Button 
-          size="sm" 
-          className="w-full"
-          onClick={() => window.open(`tel:${provider.phone}`, '_self')}
-          data-testid={`provider-call-${provider.id}`}
-        >
-          <Phone className="h-3 w-3 mr-1" />
-          {t('search.providers.callNow')}
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            size="sm" 
+            className="flex-1"
+            onClick={() => window.open(`tel:${provider.phone}`, '_self')}
+            data-testid={`provider-call-${provider.id}`}
+          >
+            <Phone className="h-3 w-3 mr-1" />
+            {t('search.providers.callNow')}
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline"
+            className="flex-1"
+            onClick={() => handleScheduleAppointment(provider)}
+            data-testid={`provider-schedule-${provider.id}`}
+          >
+            <Calendar className="h-3 w-3 mr-1" />
+            Schedule
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -355,17 +375,6 @@ export default function Chat() {
             {useLocation ? '✓ Location' : t('voice.useLocation')}
           </Button>
           
-          <div className="flex items-center space-x-2">
-            <Checkbox 
-              id="pulse-consent" 
-              checked={pulseConsent}
-              onCheckedChange={setPulseConsent}
-              data-testid="checkbox-pulse-consent"
-            />
-            <label htmlFor="pulse-consent" className="text-xs text-muted-foreground">
-              Get follow-up suggestions
-            </label>
-          </div>
         </div>
       </div>
 
@@ -446,26 +455,6 @@ export default function Chat() {
                     </div>
                   )}
                   
-                  {/* Pulse suggestion */}
-                  {message.type === 'assistant' && message.pulseSuggestion && (
-                    <div className="mr-4 mb-2">
-                      <Card className="bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800">
-                        <CardContent className="p-3">
-                          <div className="flex items-start gap-2">
-                            <Lightbulb className="h-4 w-4 text-blue-600 mt-0.5" />
-                            <div>
-                              <h5 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
-                                Follow-up Suggestion
-                              </h5>
-                              <p className="text-xs text-blue-700 dark:text-blue-300" data-testid={`pulse-suggestion-${message.id}`}>
-                                {message.pulseSuggestion}
-                              </p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
-                  )}
                 </div>
               </div>
             ))}

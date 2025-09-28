@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, MapPin, Phone, Users, Clock, Stethoscope, Filter, X, ExternalLink } from 'lucide-react';
+import { Search, MapPin, Phone, Users, Clock, Stethoscope, Filter, X, ExternalLink, Calendar } from 'lucide-react';
 import { useI18n } from '@/contexts/I18nContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -172,6 +172,19 @@ export default function ProviderSearch() {
       searchTerm: ''
     });
   }, []);
+
+  // Handle scheduling appointment
+  const handleScheduleAppointment = useCallback((provider: Provider) => {
+    // For now, open a booking URL or show scheduling options
+    // This could integrate with external scheduling services like Zocdoc
+    const bookingUrl = `https://www.zocdoc.com/search?filters=%5B%5D&insurances=%5B%5D&query=${encodeURIComponent(provider.name)}&address=${encodeURIComponent(provider.address)}`;
+    window.open(bookingUrl, '_blank');
+    
+    toast({
+      title: 'Opening Scheduling',
+      description: `Redirecting to book an appointment with ${provider.name}`,
+    });
+  }, [toast]);
 
   // Update filter
   const updateFilter = useCallback((key: keyof SearchFilters, value: string) => {
@@ -581,6 +594,16 @@ export default function ProviderSearch() {
                           >
                             <Phone className="h-3 w-3 mr-1" />
                             {t('search.providers.callNow')}
+                          </Button>
+                          
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleScheduleAppointment(provider)}
+                            data-testid={`provider-schedule-${provider.id}`}
+                          >
+                            <Calendar className="h-3 w-3 mr-1" />
+                            Schedule
                           </Button>
                           
                           <Button 

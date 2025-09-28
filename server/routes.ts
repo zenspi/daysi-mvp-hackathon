@@ -990,40 +990,6 @@ Respond with empathy and guidance about these resources. Always end with: "Pleas
       
       const reply = replyResponse.choices[0].message.content || 'I apologize, but I had trouble processing your request. Please try again.';
       
-      // Generate pulse suggestion
-      const pulsePrompt = detectedLang === 'Spanish' ? 
-        `Basado en esta consulta: "${message}", sugiera 1 seguimiento proactivo en español (máx 50 palabras):` :
-        `Based on this inquiry: "${message}", suggest 1 proactive follow-up tip in English (max 50 words):`;
-      
-      const pulseResponse = await openai.chat.completions.create({
-        model: "gpt-4o", // Using gpt-4o for better performance and reliability
-        messages: [{ role: "user", content: pulsePrompt }]
-      });
-      
-      const pulse_suggestion = pulseResponse.choices[0].message.content || 'Stay healthy and don\'t hesitate to seek help when needed.';
-      
-      // 6) Store pulse if consent given
-      if (pulseConsent && currentUser) {
-        try {
-          const pulseData = {
-            userId: currentUser.id,
-            type: intent,
-            payload: {
-              message,
-              intent,
-              results: results.length,
-              language: detectedLang,
-              suggestion: pulse_suggestion
-            }
-          };
-          
-          await supabase.from('pulses').insert([pulseData]);
-          console.log(`[ASK] Stored pulse for user: ${currentUser.id}`);
-        } catch (e) {
-          console.log('[ASK] Failed to store pulse:', e);
-        }
-      }
-      
       console.log(`[ASK] Processed ${intent} request in ${detectedLang}, found ${results.length} results`);
       
       res.json({
@@ -1031,8 +997,7 @@ Respond with empathy and guidance about these resources. Always end with: "Pleas
         reply,
         reply_lang: detectedLang,
         intent,
-        results,
-        pulse_suggestion
+        results
       });
       
     } catch (e: any) {
@@ -1056,8 +1021,7 @@ Respond with empathy and guidance about these resources. Always end with: "Pleas
             reply: fallbackResponse.choices[0].message.content || 'I apologize for the inconvenience. Please try again later.',
             reply_lang: req.body.lang || 'English',
             intent: 'providers',
-            results: [],
-            pulse_suggestion: "Consider booking a follow-up if symptoms persist."
+            results: []
           });
         } catch (fallbackError: any) {
           res.status(500).json({ success: false, error: fallbackError?.message || 'AI conversation failed' });
