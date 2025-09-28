@@ -474,6 +474,32 @@ class HealthcareVoiceAssistant {
                     this.updateTranscript(`You (partial): ${event.transcript}`, 'user-partial');
                     break;
                     
+                // HOTFIX: Add specific event handlers for DAYSI requirements
+                case 'response.transcript.delta':
+                    // Append live transcript delta to #liveTranscript
+                    const liveTranscript = document.getElementById('transcript');
+                    if (liveTranscript && event.transcript) {
+                        this.updateTranscript(`Assistant: ${event.transcript}`, 'assistant-delta');
+                    }
+                    break;
+                    
+                case 'response.transcript.completed':
+                    // Add completed transcript with newline to #conversation
+                    if (event.transcript) {
+                        this.addMessage(event.transcript, 'assistant');
+                    }
+                    break;
+                    
+                case 'input_audio_buffer.speech_started':
+                    this.updateStatus('listening', '🎤 Listening...');
+                    this.updateDebugBadge();
+                    break;
+                    
+                case 'input_audio_buffer.speech_stopped':
+                    this.updateStatus('processing', '⚡ Processing...');
+                    this.updateDebugBadge();
+                    break;
+                    
                 case 'response.created':
                 case 'response.started':
                     // Mute microphone immediately when AI response starts (before any audio)
@@ -1071,8 +1097,10 @@ class HealthcareVoiceAssistant {
     }
     
     updateStatus(state, text) {
+        this.connectionState = state; // HOTFIX: Track connection state for debug badge
         this.status.className = `status ${state}`;
         this.status.textContent = text;
+        this.updateDebugBadge();
     }
     
     updateTranscript(text, type = 'user') {
