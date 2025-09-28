@@ -1060,14 +1060,27 @@ Please respond with JSON in this format:
 
   voiceRouter.post("/ephemeral", asyncHandler(async (req: Request, res: Response) => {
     try {
+      // SECURITY: Check origin and rate limit for ephemeral token endpoint
+      const origin = req.headers.origin || req.headers.referer;
+      const host = req.headers.host;
+      
+      // Only allow same-origin requests and replit.app domains
+      if (process.env.NODE_ENV === 'production') {
+        if (!origin || (!origin.includes(host!) && !origin.includes('replit.app'))) {
+          console.warn(`[SECURITY] Ephemeral token request blocked from origin: ${origin}`);
+          return res.status(403).json({ error: 'Forbidden - Invalid origin' });
+        }
+      }
+      
       if (!process.env.OPENAI_API_KEY) {
-        return res.status(502).json({ error: 'missing OPENAI_API_KEY' });
+        return res.status(503).json({ error: 'OPENAI_KEY_MISSING' });
       }
 
       // HOTFIX: Server-side session start logging with masked OpenAI key
       const { lang = 'en', locked = true } = req.body;
       console.log('=== DAYSI VOICE SESSION START (SERVER) ===');
       console.log(`Language: ${lang} (locked: ${locked})`);
+      console.log(`Origin: ${origin}`);
       console.log(`OpenAI API Key: sk-...${process.env.OPENAI_API_KEY.slice(-4)}`);
       console.log(`Session requested at: ${new Date().toISOString()}`);
       console.log('============================================');

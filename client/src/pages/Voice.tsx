@@ -33,10 +33,6 @@ export default function Voice() {
   const [hasAudioSupport] = useState(() => !!navigator.mediaDevices?.getUserMedia);
   const [microphonePermission, setMicrophonePermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
   
-  // Audio playback for OpenAI responses
-  const audioContextPlaybackRef = useRef<AudioContext | null>(null);
-  const audioQueueRef = useRef<AudioBuffer[]>([]);
-  const isPlayingRef = useRef(false);
 
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
@@ -45,17 +41,6 @@ export default function Voice() {
   const pendingStartRef = useRef(false);
   const cachedStreamRef = useRef<MediaStream | null>(null);
 
-  // Initialize audio context for playback
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      audioContextPlaybackRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    return () => {
-      if (audioContextPlaybackRef.current) {
-        audioContextPlaybackRef.current.close();
-      }
-    };
-  }, []);
 
   // Auto-start when ready if user tapped early - debounced to prevent double starts
   useEffect(() => {
@@ -71,8 +56,8 @@ export default function Voice() {
     }
   }, [connectionStatus, isRecording]);
 
-  // WebSocket connection using ephemeral tokens
-  const connectWebSocket = useCallback(async () => {
+  // WebSocket connection to server relay
+  const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return;
     }
@@ -80,57 +65,14 @@ export default function Voice() {
     setConnectionStatus('connecting');
     
     try {
-      // Get ephemeral token from server
-      const response = await fetch('/api/voice/ephemeral', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lang: language, locked: true })
-      });
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/realtime`;
       
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to get session token');
-      }
-      
-      const { client_secret } = await response.json();
-      if (!client_secret) {
-        throw new Error('No client secret received');
-      }
-      
-      // Connect directly to OpenAI Realtime API
-      const wsUrl = `wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview`;
-      const ws = new WebSocket(wsUrl, ['realtime'], {
-        headers: {
-          'Authorization': `Bearer ${client_secret}`,
-          'OpenAI-Beta': 'realtime=v1'
-        }
-      });
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('[VOICE] Connected to OpenAI Realtime API');
-        
-        // Initialize session with healthcare context
-        const sessionConfig = {
-          type: 'session.update',
-          session: {
-            model: 'gpt-4o-realtime-preview',
-            modalities: ['text', 'audio'],
-            voice: 'verse',
-            input_audio_format: 'pcm16',
-            output_audio_format: 'pcm16',
-            instructions: `You are DAYSI, a healthcare voice assistant. Be warm, caring, and helpful. Respond in ${language === 'es' ? 'Spanish' : 'English'}. Keep responses concise and conversational.`,
-            turn_detection: {
-              type: 'server_vad',
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 200
-            },
-            temperature: 0.8
-          }
-        };
-        
-        ws.send(JSON.stringify(sessionConfig));
+        console.log('[VOICE] WebSocket connected to server');
         setConnectionStatus('connected');
       };
 
@@ -141,8 +83,8 @@ export default function Voice() {
             const data = JSON.parse(event.data);
             console.log('[VOICE] Received message:', data.type);
             
-            if (data.type === 'session.created' || data.type === 'session.updated') {
-              console.log('[VOICE] OpenAI session ready');
+            if (data.type === 'connection.ready') {
+              console.log('[VOICE] Voice services ready');
               setConnectionStatus('ready');
               return;
             }
@@ -175,12 +117,19 @@ export default function Voice() {
             return;
           }
           
-          if (data.type === 'response.audio.delta') {
-            // Handle streaming audio from OpenAI
-            if (data.delta) {
-              // Convert base64 to audio and play
-              playAudioDelta(data.delta);
-            }
+          if (data.type === 'response.audio_transcript.done') {
+            setCurrentTranscript('');
+            setVoiceStatus('idle');
+            setIsRecording(false);
+            
+            const assistantMessage: Message = {
+              id: Date.now().toString(),
+              content: data.transcript || 'Response received',
+              type: 'assistant',
+              timestamp: new Date(),
+              language
+            };
+            setMessages(prev => [...prev, assistantMessage]);
             return;
           }
           
@@ -239,43 +188,6 @@ export default function Voice() {
       setConnectionStatus('error');
     }
   }, [toast, language]);
-
-  // Play audio delta from OpenAI
-  const playAudioDelta = useCallback(async (base64Audio: string) => {
-    if (!audioContextPlaybackRef.current) return;
-    
-    try {
-      const audioData = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
-      const audioBuffer = await audioContextPlaybackRef.current.decodeAudioData(audioData.buffer);
-      
-      audioQueueRef.current.push(audioBuffer);
-      
-      if (!isPlayingRef.current) {
-        playNextInQueue();
-      }
-    } catch (error) {
-      console.warn('[VOICE] Audio decode error:', error);
-    }
-  }, []);
-
-  const playNextInQueue = useCallback(() => {
-    if (audioQueueRef.current.length === 0 || !audioContextPlaybackRef.current) {
-      isPlayingRef.current = false;
-      return;
-    }
-    
-    isPlayingRef.current = true;
-    const audioBuffer = audioQueueRef.current.shift()!;
-    const source = audioContextPlaybackRef.current.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(audioContextPlaybackRef.current.destination);
-    
-    source.onended = () => {
-      playNextInQueue();
-    };
-    
-    source.start();
-  }, []);
 
   // Check microphone permissions
   const checkMicrophonePermission = useCallback(async () => {
