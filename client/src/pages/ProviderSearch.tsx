@@ -234,9 +234,14 @@ export default function ProviderSearch() {
       setFilters(prev => ({ ...prev, borough: user.borough as string }));
     }
     
-    // Perform initial search
+    // Perform initial search immediately
     searchProviders();
-  }, [user, searchProviders]);
+  }, []); // Remove dependencies to force immediate load
+
+  // Also search on mount without any conditions
+  useEffect(() => {
+    searchProviders();
+  }, []);
 
   // Trigger search when filters change (debounced)
   useEffect(() => {
