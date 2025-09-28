@@ -565,7 +565,7 @@ Please respond with JSON in this format:
       }
 
       const aiResponse = await openai.chat.completions.create({
-        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        model: "gpt-4o", // Using gpt-4o for better performance and reliability
         messages: [{ role: "user", content: analysisPrompt }],
         response_format: { type: "json_object" }
       });
@@ -655,7 +655,7 @@ Please respond with JSON in this format:
       }
 
       const aiResponse = await openai.chat.completions.create({
-        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        model: "gpt-4o", // Using gpt-4o for better performance and reliability
         messages: [{ role: "user", content: analysisPrompt }],
         response_format: { type: "json_object" }
       });
@@ -791,7 +791,7 @@ Please respond with JSON in this format:
             // Fallback to original method
             const langDetectPrompt = `Detect the language of this message and respond with just the language name in English: "${message}"`;
             const langResponse = await openai.chat.completions.create({
-              model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+              model: "gpt-4o", // Using gpt-4o for better performance and reliability
               messages: [{ role: "user", content: langDetectPrompt }]
             });
             
@@ -817,7 +817,7 @@ Please respond with JSON in this format:
       - "resources" for: food assistance, housing, legal aid, insurance help, benefits, WIC, food stamps, shelter, unemployment, social services, financial help`;
       
       const intentResponse = await openai.chat.completions.create({
-        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        model: "gpt-4o", // Using gpt-4o for better performance and reliability
         messages: [{ role: "user", content: intentPrompt }]
       });
       
@@ -836,7 +836,7 @@ Please respond with JSON in this format:
       }`;
       
       const filterResponse = await openai.chat.completions.create({
-        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        model: "gpt-4o", // Using gpt-4o for better performance and reliability
         messages: [{ role: "user", content: filterPrompt }],
         response_format: { type: "json_object" }
       });
@@ -964,7 +964,7 @@ Please respond with JSON in this format:
         Respond in English with empathy and warmth, max 120 words. 1 empathetic sentence, then present the options. Offer "I can text you the details." Ask ≤1 clarifying question if helpful.`;
       
       const replyResponse = await openai.chat.completions.create({
-        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        model: "gpt-4o", // Using gpt-4o for better performance and reliability
         messages: [{ role: "user", content: responsePrompt }]
       });
       
@@ -976,7 +976,7 @@ Please respond with JSON in this format:
         `Based on this inquiry: "${message}", suggest 1 proactive follow-up tip in English (max 50 words):`;
       
       const pulseResponse = await openai.chat.completions.create({
-        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        model: "gpt-4o", // Using gpt-4o for better performance and reliability
         messages: [{ role: "user", content: pulsePrompt }]
       });
       
@@ -1045,6 +1045,57 @@ Please respond with JSON in this format:
       } else {
         res.status(500).json({ success: false, error: e?.message || 'Conversation processing failed' });
       }
+    }
+  }));
+
+  // Simple test endpoint to debug chat issues
+  askRouter.post("/test", asyncHandler(async (req: Request, res: Response) => {
+    const correlationId = Math.random().toString(36).substring(7);
+    console.log(`[ASK-TEST:${correlationId}] Simple test endpoint`);
+    
+    try {
+      const { message } = req.body;
+      
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ success: false, error: 'Message is required' });
+      }
+      
+      const openai = getOpenAIClient();
+      if (!openai) {
+        return res.status(503).json({ success: false, error: 'OPENAI_KEY_MISSING' });
+      }
+      
+      console.log(`[ASK-TEST:${correlationId}] Making simple OpenAI call`);
+      
+      const testResponse = await Promise.race([
+        openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [{
+            role: "user",
+            content: `Respond briefly to this healthcare question: "${message}"`
+          }],
+          max_tokens: 100
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('OpenAI timeout')), 10000)
+        )
+      ]) as any;
+      
+      console.log(`[ASK-TEST:${correlationId}] OpenAI response received`);
+      
+      return res.json({
+        success: true,
+        reply: testResponse.choices[0].message.content || 'Test response',
+        correlationId
+      });
+      
+    } catch (error: any) {
+      console.error(`[ASK-TEST:${correlationId}] Error:`, error?.message);
+      return res.status(500).json({ 
+        success: false, 
+        error: error?.message || 'Test failed',
+        correlationId 
+      });
     }
   }));
 
