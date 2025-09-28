@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
+import { useQuery } from '@tanstack/react-query';
 import { 
   User, 
   MessageCircle, 
@@ -16,7 +17,10 @@ import {
   Calendar,
   Activity,
   MapPin,
-  Globe
+  Globe,
+  Clock,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { ProactiveSuggestions } from '@/components/proactive/ProactiveSuggestions';
@@ -27,10 +31,29 @@ interface UserActivity {
   description: string;
 }
 
+interface Appointment {
+  id: string;
+  providerName: string;
+  preferredDate: string;
+  preferredTime: string;
+  reason: string;
+  urgency: 'routine' | 'urgent' | 'emergency';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  requestedAt: string;
+  patientPhone: string;
+}
+
 export default function UserDashboard() {
   const { user } = useAuth();
   const { t, language } = useI18n();
   const { toast } = useToast();
+  
+  // Fetch user appointments by phone number
+  const { data: appointments = [], isLoading: appointmentsLoading } = useQuery({
+    queryKey: ['/api/appointments/by-phone', user?.phone],
+    enabled: !!user?.phone,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
   
   const [recentActivity] = useState<UserActivity[]>([
     {
@@ -99,6 +122,35 @@ export default function UserDashboard() {
     
     const diffInDays = Math.floor(diffInHours / 24);
     return `${diffInDays}d ago`;
+  };
+
+  const getAppointmentStatusIcon = (status: string) => {
+    switch (status) {
+      case 'pending': return <Clock className="h-4 w-4 text-yellow-500" />;
+      case 'confirmed': return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'cancelled': return <XCircle className="h-4 w-4 text-red-500" />;
+      case 'completed': return <CheckCircle className="h-4 w-4 text-blue-500" />;
+      default: return <Calendar className="h-4 w-4" />;
+    }
+  };
+
+  const getAppointmentStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+      case 'confirmed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case 'cancelled': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      case 'completed': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+    }
+  };
+
+  const getUrgencyColor = (urgency: string) => {
+    switch (urgency) {
+      case 'emergency': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      case 'urgent': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+      case 'routine': return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+    }
   };
 
   if (!user) {
@@ -256,6 +308,95 @@ export default function UserDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Appointments Section */}
+      {user?.phone && (
+        <Card data-testid="card-appointments">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Calendar className="h-5 w-5" />
+                <span>My Appointments</span>
+              </div>
+              <Link href="/search/providers">
+                <Button variant="outline" size="sm" data-testid="button-schedule-new">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Schedule New
+                </Button>
+              </Link>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {appointmentsLoading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-3"></div>
+                <p className="text-sm text-muted-foreground">Loading appointments...</p>
+              </div>
+            ) : appointments.length > 0 ? (
+              <div className="space-y-4">
+                {appointments.slice(0, 3).map((appointment: Appointment) => (
+                  <div key={appointment.id} className="p-4 rounded-lg border bg-card" data-testid={`appointment-${appointment.id}`}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-sm" data-testid={`appointment-provider-${appointment.id}`}>
+                          {appointment.providerName}
+                        </h4>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {appointment.reason}
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Badge className={`text-xs px-2 py-1 ${getAppointmentStatusColor(appointment.status)}`} data-testid={`appointment-status-${appointment.id}`}>
+                          {getAppointmentStatusIcon(appointment.status)}
+                          <span className="ml-1 capitalize">{appointment.status}</span>
+                        </Badge>
+                        <Badge className={`text-xs px-2 py-1 ${getUrgencyColor(appointment.urgency)}`} data-testid={`appointment-urgency-${appointment.id}`}>
+                          {appointment.urgency.charAt(0).toUpperCase() + appointment.urgency.slice(1)}
+                        </Badge>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <div className="flex items-center space-x-4">
+                        {appointment.preferredDate && (
+                          <span>Preferred: {appointment.preferredDate}</span>
+                        )}
+                        {appointment.preferredTime && (
+                          <span>{appointment.preferredTime}</span>
+                        )}
+                      </div>
+                      <span>
+                        Requested {formatRelativeTime(new Date(appointment.requestedAt))}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                
+                {appointments.length > 3 && (
+                  <div className="text-center pt-2">
+                    <p className="text-xs text-muted-foreground">
+                      Showing 3 of {appointments.length} appointments
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+                <p className="text-sm text-muted-foreground mb-4">
+                  No appointments yet. Schedule your first appointment!
+                </p>
+                <Link href="/search/providers">
+                  <Button variant="outline" size="sm" data-testid="button-find-providers">
+                    <Stethoscope className="h-4 w-4 mr-2" />
+                    Find Providers
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Proactive AI Suggestions */}
       <ProactiveSuggestions className="mb-6" maxSuggestions={2} />
