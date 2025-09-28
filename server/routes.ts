@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { Router } from "express";
 import cors from "cors";
 import { storage } from "./storage";
-import { insertServerLogSchema, insertUserSchema, insertPulseSchema, insertProviderClaimSchema, users, providers, resources, pulses, providerClaims } from "@shared/schema";
+import { insertServerLogSchema, insertUserSchema, insertPulseSchema, insertProviderClaimSchema, insertAppointmentSchema, users, providers, resources, pulses, providerClaims, appointments } from "@shared/schema";
 import { ZodError, z } from "zod";
 import { config, isDevelopment } from "./config";
 import { createClient } from "@supabase/supabase-js";
@@ -1961,6 +1961,64 @@ If emergency mentioned, set urgency to "emergency". If user asks to call/connect
   apiRouter.use("/ask", askRouter);
   apiRouter.use("/voice", voiceRouter);
   apiRouter.use("/provider-claims", providerClaimsRouter);
+  
+  // Appointments Router
+  const appointmentsRouter = Router();
+  
+  // Create appointment request
+  appointmentsRouter.post("/", asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const appointmentData = insertAppointmentSchema.parse(req.body);
+      
+      // Use direct database insert via storage
+      const appointment = await storage.db.insert(appointments).values({
+        ...appointmentData,
+        userId: null, // Anonymous appointments for MVP
+        patientName: appointmentData.patientName || 'Anonymous Patient',
+        status: 'pending'
+      }).returning();
+      
+      console.log(`[APPOINTMENTS] New appointment request: ${appointment[0].id} for ${appointmentData.providerName}`);
+      
+      res.json({ 
+        success: true, 
+        data: appointment[0] 
+      });
+    } catch (error) {
+      console.error('[APPOINTMENTS] Create error:', error);
+      throw new AppError("Failed to create appointment request", 500);
+    }
+  }));
+  
+  // Get appointments by phone number (for tracking without user accounts)
+  appointmentsRouter.get("/by-phone/:phone", asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const { phone } = req.params;
+      
+      if (!phone) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Phone number required" 
+        });
+      }
+      
+      const phoneAppointments = await storage.db
+        .select()
+        .from(appointments)
+        .where(sql`patient_phone = ${phone}`)
+        .orderBy(desc(appointments.requestedAt));
+      
+      res.json({ 
+        success: true, 
+        data: phoneAppointments 
+      });
+    } catch (error) {
+      console.error('[APPOINTMENTS] Fetch by phone error:', error);
+      throw new AppError("Failed to fetch appointments", 500);
+    }
+  }));
+  
+  apiRouter.use("/appointments", appointmentsRouter);
   app.use("/api", apiRouter);
   
   // Mount Twilio webhooks directly on app (not under /api)

@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type ServerLog, type InsertServerLog, type ServerConfig, type InsertServerConfig, type ProviderClaim, type InsertProviderClaim, type Provider } from "@shared/schema";
+import { type User, type InsertUser, type ServerLog, type InsertServerLog, type ServerConfig, type InsertServerConfig, type ProviderClaim, type InsertProviderClaim, type Provider, type Appointment, type InsertAppointment } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -22,6 +22,10 @@ export interface IStorage {
   
   // Check if provider is already claimed
   isProviderClaimed(providerId: string): Promise<boolean>;
+  
+  // Appointments
+  createAppointment(appointment: InsertAppointment): Promise<Appointment>;
+  getAppointmentsByPhone(phone: string): Promise<Appointment[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -29,11 +33,13 @@ export class MemStorage implements IStorage {
   private serverLogs: Map<string, ServerLog>;
   private serverConfig: ServerConfig | undefined;
   private providerClaims: Map<string, ProviderClaim>;
+  private appointments: Map<string, Appointment>;
 
   constructor() {
     this.users = new Map();
     this.serverLogs = new Map();
     this.providerClaims = new Map();
+    this.appointments = new Map();
     
     // Initialize with default server config
     this.serverConfig = {
@@ -187,6 +193,26 @@ export class MemStorage implements IStorage {
     const claims = await this.getProviderClaimsByProvider(providerId);
     return claims.some(claim => claim.status === 'verified');
   }
+
+  async createAppointment(appointment: InsertAppointment): Promise<Appointment> {
+    const id = randomUUID();
+    const now = new Date();
+    const newAppointment: Appointment = {
+      ...appointment,
+      id,
+      requestedAt: now,
+      scheduledAt: null,
+      status: appointment.status || 'pending',
+    };
+    this.appointments.set(id, newAppointment);
+    return newAppointment;
+  }
+
+  async getAppointmentsByPhone(phone: string): Promise<Appointment[]> {
+    return Array.from(this.appointments.values()).filter(appointment => 
+      appointment.patientPhone === phone
+    );
+  }
 }
 
 import { DatabaseStorage } from "./db-storage";
@@ -319,6 +345,20 @@ class HybridStorage implements IStorage {
     return this.withFallback(
       () => this.dbStorage.isProviderClaimed(providerId),
       () => this.memStorage.isProviderClaimed(providerId)
+    );
+  }
+
+  async createAppointment(appointment: InsertAppointment): Promise<Appointment> {
+    return this.withFallback(
+      () => this.dbStorage.createAppointment(appointment),
+      () => this.memStorage.createAppointment(appointment)
+    );
+  }
+
+  async getAppointmentsByPhone(phone: string): Promise<Appointment[]> {
+    return this.withFallback(
+      () => this.dbStorage.getAppointmentsByPhone(phone),
+      () => this.memStorage.getAppointmentsByPhone(phone)
     );
   }
 }

@@ -93,6 +93,24 @@ export const providerClaims = pgTable("provider_claims", {
   notes: text("notes"),
 });
 
+export const appointments = pgTable("appointments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerId: varchar("provider_id").notNull(),
+  providerName: text("provider_name").notNull(),
+  userId: varchar("user_id"),
+  patientName: text("patient_name"),
+  patientPhone: text("patient_phone").notNull(),
+  patientEmail: text("patient_email"),
+  preferredDate: text("preferred_date"),
+  preferredTime: text("preferred_time"),
+  reason: text("reason").notNull(),
+  urgency: text("urgency", { enum: ["routine", "urgent", "emergency"] }).default("routine"),
+  status: text("status", { enum: ["pending", "confirmed", "cancelled", "completed"] }).default("pending"),
+  requestedAt: timestamp("requested_at").defaultNow().notNull(),
+  scheduledAt: timestamp("scheduled_at"),
+  notes: text("notes"),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -128,8 +146,16 @@ export const insertProviderClaimSchema = createInsertSchema(providerClaims).omit
   verifiedAt: true,
 });
 
+export const insertAppointmentSchema = createInsertSchema(appointments).omit({
+  id: true,
+  requestedAt: true,
+  scheduledAt: true,
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
+export type Appointment = typeof appointments.$inferSelect;
 
 export type InsertServerLog = z.infer<typeof insertServerLogSchema>;
 export type ServerLog = typeof serverLogs.$inferSelect;
