@@ -299,6 +299,26 @@
             color: #92400e;
         }
         
+        /* Debug badge styling per HOTFIX requirement */
+        .debug-badge {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 11px;
+            line-height: 1.2;
+            z-index: 1000;
+            border: 1px solid #374151;
+        }
+        
+        .debug-line {
+            margin: 2px 0;
+        }
+        
         .lang-chip.locked {
             background: #fee2e2;
             border-color: #fca5a5;
@@ -327,10 +347,12 @@
         <button id="startBtn" class="btn btn-primary">🎤 Start Voice</button>
         <button id="stopBtn" class="btn btn-danger" disabled>⏹ Stop</button>
         <button id="langBtn" class="btn btn-secondary">🌍 EN</button>
+        <button id="enBtn" class="btn btn-secondary" title="Lock to English">EN</button>
+        <button id="esBtn" class="btn btn-secondary" title="Lock to Spanish">ES</button>
+        <button id="resetLangBtn" class="btn btn-secondary" title="Reset language lock">Reset</button>
         <button id="locationBtn" class="btn btn-secondary">📍 Use Location</button>
         <button id="reconnectBtn" class="btn btn-secondary" style="display:none;">🔄 Reconnect</button>
-        <div id="lang-chip" class="lang-chip en">EN</div>
-        <button id="resetLangBtn" class="btn btn-secondary" title="Reset language lock">🔓 Reset</button>
+        <div id="lang-chip" class="lang-chip en">EN 🔒</div>
     </div>
 
     <div class="audio-visualizer" style="display: none;">
@@ -384,6 +406,13 @@
     </div>
 
     <div id="toast" class="toast"></div>
+    
+    <!-- Debug badge (bottom-right) per HOTFIX requirement -->
+    <div id="debugBadge" class="debug-badge">
+        <div class="debug-line">Conn: <span id="debugConn">disconnected</span></div>
+        <div class="debug-line">Lang: <span id="debugLang">en</span> <span id="debugLock">🔒</span></div>
+        <div class="debug-line">Det: <span id="debugDetections">-,-,-</span></div>
+    </div>
 
     <script src="/realtime.js"></script>
 </body>

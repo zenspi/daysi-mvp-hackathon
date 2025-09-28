@@ -1,0 +1,47 @@
+DAYSI VOICE HOTFIX – LOCK EN BY DEFAULT, RELIABLE TRANSCRIPT, NO STALLS
+
+Please implement these precise changes and report back with files+lines edited:
+
+1) DEFAULT LANGUAGE + SAFEGUARDS
+- In public/realtime.js (or equivalent), set:
+  langState = { replyLang: 'en', locked: true, window: [], lastSwitchAt: 0 }
+- Only allow automatic language switching when locked === false.
+- Increase hysteresis for auto-switching to: "3 of last 4" with confidence >= 0.85.
+- Ignore detections for utterances < 2 seconds or transcripts < 5 characters.
+- Add two buttons already in UI:
+  • “ES” → sets { replyLang:'es', locked:true }
+  • “EN” → sets { replyLang:'en', locked:true }
+  • “Reset” → sets { locked:false } (auto-follow can resume)
+- Before sending any request to the model or TTS, include the instruction string:
+  `Always reply only in ${langState.replyLang}. Translate internally if needed. Use culturally fluent tone appropriate for NYC communities.`
+
+2) TRANSCRIPT WIRING (SHOW LIVE TEXT)
+- Ensure getUserMedia uses: { audio: { channelCount:1, sampleRate:16000, echoCancellation:true, noiseSuppression:true, autoGainControl:true } }
+- Reconnect MediaRecorder on every "Start" click. timeslice=100ms.
+- Ensure the Realtime event handlers are wired:
+  • on 'response.transcript.delta' → append to #liveTranscript
+  • on 'response.transcript.completed' → newline in #conversation
+  • on 'input_audio_buffer.speech_started' → show “listening …”
+  • on 'input_audio_buffer.speech_stopped' → show “processing …”
+- If using WebRTC: subscribe to datachannel messages and route JSON events to the same handlers.
+- If using WS: same handlers for event types; make sure we’re not filtering out transcript events.
+- Add a small debug badge (bottom-right) that shows:
+  connState, langState.replyLang, locked, last 3 detections.
+
+3) STOP AFTER 5 TURNS BUG
+- Ensure we don’t accidentally close/recreate RTCPeerConnection per turn.
+- Add a keepalive ping on the datachannel every 10s.
+- Renew ephemeral token at 4:30 minutes (before expiry).
+- Only call response.create AFTER audio buffer commit/stop; queue turns safely (no parallel response.create calls).
+
+4) BACKUP TEXT MODE MATCHES VOICE
+- In /api/ask, accept lang:'auto' and apply the same language rule as above (use detect endpoint if no transcript language).
+- Ensure /assistant page (text chat) displays the same language chip and respects lock/reset.
+
+5) LOGGING
+- On session start, log one line with masked OpenAI key status and the chosen replyLang.
+- When a language switch happens, log: prev → next, reason, confidence window.
+
+Deliverables:
+- Files/lines changed summary.
+- URLs to test: /realtime.html and /assistant.

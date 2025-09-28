@@ -5,11 +5,12 @@ class HealthcareVoiceAssistant {
         this.audioContext = null;
         this.isRecording = false;
         this.currentLanguage = 'en'; // Keep for UI compatibility
-        // Language state with hysteresis
+        // Language state with hysteresis - LOCKED EN BY DEFAULT per hotfix
         this.langState = {
             replyLang: 'en',
-            locked: false,
-            window: [] // Keep last 3 detections: [{code, conf}, ...]
+            locked: true,
+            window: [], // Keep last 4 detections: [{code, conf, timestamp}, ...]
+            lastSwitchAt: 0
         };
         this.userLocation = null;
         this.connectionId = null;
@@ -47,8 +48,17 @@ class HealthcareVoiceAssistant {
         this.reconnectBtn.addEventListener('click', () => this.reconnect());
         this.sendBtn.addEventListener('click', () => this.sendTextMessage());
         
-        // Reset language lock button
+        // HOTFIX: ES/EN/Reset buttons per requirement
+        const esBtn = document.getElementById('esBtn');
+        const enBtn = document.getElementById('enBtn');
         const resetLangBtn = document.getElementById('resetLangBtn');
+        
+        if (esBtn) {
+            esBtn.addEventListener('click', () => this.lockLanguage('es'));
+        }
+        if (enBtn) {
+            enBtn.addEventListener('click', () => this.lockLanguage('en'));
+        }
         if (resetLangBtn) {
             resetLangBtn.addEventListener('click', () => this.resetLanguageLock());
         }
@@ -61,8 +71,9 @@ class HealthcareVoiceAssistant {
 
         // WebSocket connection now working - focus on voice functionality
         
-        // Initialize language indicator
+        // Initialize language indicator and debug badge
         this.updateLanguageIndicator();
+        this.updateDebugBadge();
     }
     
     async initializeAudio() {
@@ -112,27 +123,38 @@ class HealthcareVoiceAssistant {
                 return { code: this.langState.replyLang, conf: 1.0, explicit: true };
             }
 
+            // HOTFIX: Safeguards for short utterances - ignore < 2 seconds or < 5 characters
+            if (text.length < 5) {
+                console.log('⚠️ Ignoring short utterance for language detection');
+                return { code: this.langState.replyLang, conf: 0.5 };
+            }
+
             // Auto-detection if not locked
             if (!this.langState.locked) {
                 const response = await fetch(`/api/voice/detect-language?text=${encodeURIComponent(text)}`);
                 const data = await response.json();
                 
                 if (data.success) {
-                    // Add to detection window
-                    this.langState.window.push({ code: data.code, conf: data.conf });
-                    if (this.langState.window.length > 3) {
-                        this.langState.window.shift(); // Keep only last 3
+                    // Add to detection window with timestamp
+                    this.langState.window.push({ 
+                        code: data.code, 
+                        conf: data.conf, 
+                        timestamp: Date.now() 
+                    });
+                    if (this.langState.window.length > 4) {
+                        this.langState.window.shift(); // Keep only last 4
                     }
 
-                    // Check for language switch (2 of last 3 match with conf >= 0.7)
-                    if (this.langState.window.length >= 2) {
-                        const recentDetections = this.langState.window.slice(-3);
+                    // HOTFIX: Stricter hysteresis - 3 of last 4 with conf >= 0.85
+                    if (this.langState.window.length >= 3) {
+                        const recentDetections = this.langState.window.slice(-4);
                         const targetLang = data.code;
-                        const matches = recentDetections.filter(d => d.code === targetLang && d.conf >= 0.7);
+                        const matches = recentDetections.filter(d => d.code === targetLang && d.conf >= 0.85);
                         
-                        if (matches.length >= 2 && targetLang !== this.langState.replyLang) {
+                        if (matches.length >= 3 && targetLang !== this.langState.replyLang) {
                             this.langState.replyLang = targetLang;
-                            console.log(`🌍 Auto-switched to ${targetLang} (hysteresis: ${matches.length}/3 matches)`);
+                            this.langState.lastSwitchAt = Date.now();
+                            console.log(`🌍 Auto-switched to ${targetLang} (hysteresis: ${matches.length}/4 matches, conf >= 0.85)`);
                             this.updateLanguageIndicator();
                         }
                     }
@@ -161,17 +183,40 @@ class HealthcareVoiceAssistant {
             langChip.textContent = `${this.langState.replyLang.toUpperCase()}${this.langState.locked ? ' 🔒' : ''}`;
             langChip.className = `lang-chip ${this.langState.replyLang} ${this.langState.locked ? 'locked' : ''}`;
         }
+        
+        // Update ES/EN button states
+        const esBtn = document.getElementById('esBtn');
+        const enBtn = document.getElementById('enBtn');
+        if (esBtn) esBtn.classList.toggle('active', this.langState.replyLang === 'es' && this.langState.locked);
+        if (enBtn) enBtn.classList.toggle('active', this.langState.replyLang === 'en' && this.langState.locked);
     }
 
     // Get TTS voice based on current language
     getTTSVoice() {
         return this.langState.replyLang === 'es' ? 'es-US' : 'en-US';
     }
+    
+    // HOTFIX: Debug badge update per requirement
+    updateDebugBadge() {
+        const debugConn = document.getElementById('debugConn');
+        const debugLang = document.getElementById('debugLang');
+        const debugLock = document.getElementById('debugLock');
+        const debugDetections = document.getElementById('debugDetections');
+        
+        if (debugConn) debugConn.textContent = this.connectionState;
+        if (debugLang) debugLang.textContent = this.langState.replyLang;
+        if (debugLock) debugLock.textContent = this.langState.locked ? '🔒' : '🔓';
+        if (debugDetections) {
+            const recent = this.langState.window.slice(-3);
+            const display = recent.map(d => `${d.code}:${d.conf.toFixed(1)}`).join(',');
+            debugDetections.textContent = display || '-,-,-';
+        }
+    }
 
     // Unified session update method - tries WebRTC control channel first, WebSocket fallback
     sendSessionUpdate() {
         // Prepare session configuration with current language state
-        const instructions = `Always reply only in ${this.langState.replyLang}. If user mixes languages, translate internally and reply in ${this.langState.replyLang}. Keep culturally fluent, warm tone. You are a helpful healthcare navigation assistant. Provide empathetic, concise responses. Focus on healthcare provider recommendations, social services guidance, emergency triage when appropriate, and practical next steps.`;
+        const instructions = `Always reply only in ${this.langState.replyLang}. Translate internally if needed. Use culturally fluent tone appropriate for NYC communities. You are a helpful healthcare navigation assistant. Provide empathetic, concise responses. Focus on healthcare provider recommendations, social services guidance, emergency triage when appropriate, and practical next steps.`;
         
         // Try WebRTC control channel first (preferred for realtime)
         if (this.controlChannel && this.controlChannel.readyState === 'open') {
@@ -236,10 +281,11 @@ class HealthcareVoiceAssistant {
             console.log('Step 1: Requesting microphone access...');
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 audio: {
+                    channelCount: 1,
+                    sampleRate: 16000,
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true,
-                    channelCount: 1
+                    autoGainControl: true
                 } 
             });
             console.log('Step 1: Microphone access granted');
@@ -874,11 +920,29 @@ class HealthcareVoiceAssistant {
         this.showToast(`Language locked to ${this.langState.replyLang === 'en' ? 'English' : 'Spanish'}`, 'info');
     }
 
+    // HOTFIX: Language locking methods per requirement
+    lockLanguage(lang) {
+        this.langState.replyLang = lang;
+        this.langState.locked = true;
+        this.langState.lastSwitchAt = Date.now();
+        console.log(`🔒 Language locked to ${lang.toUpperCase()}`);
+        this.updateLanguageIndicator();
+        this.updateDebugBadge();
+        
+        // If in active session, update session config
+        if (this.connectionState === 'connected') {
+            this.sendSessionUpdate();
+        }
+        this.showToast(`Language locked to ${lang === 'en' ? 'English' : 'Spanish'}`, 'info');
+    }
+
     // Reset language lock (new function for UI button)
     resetLanguageLock() {
         this.langState.locked = false;
         this.langState.window = []; // Clear detection history
+        console.log('🔓 Language lock removed - auto-detection resumed');
         this.updateLanguageIndicator();
+        this.updateDebugBadge();
         this.showToast('Language lock removed - will auto-detect', 'info');
     }
 
