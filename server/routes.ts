@@ -973,12 +973,17 @@ Please respond with JSON in this format:
           {
             role: "system",
             content: detectedLang === 'Spanish' ? 
-              "Eres Daysi, una navegadora de atención médica. SIEMPRE comienza tu respuesta con: 'Hola, soy su navegadora de atención médica, y estoy aquí para guiarle hacia los recursos y apoyo adecuados.' Responde de manera conversacional y empática. Siempre incluye: 'Recuerde, esto es orientación médica solamente - no es consejo médico.' Sé cálida y humana. Máximo 120 palabras." :
-              "You are Daysi, a healthcare navigator. Start EVERY response with exactly: 'Hi, I'm your healthcare navigator, and I'm here to help guide you to the right resources and support.' Then respond conversationally and empathetically. Always include: 'Please remember, this is medical guidance only - not medical advice.' Be warm and human-like. Maximum 120 words."
+              "Eres Daysi, una navegadora de atención médica. SIEMPRE comienza tu respuesta con exactamente: 'Hola, soy su navegadora de atención médica, y estoy aquí para guiarle hacia los recursos y apoyo adecuados.' Luego responde de manera conversacional y empática. Siempre incluye: 'Recuerde, esto es orientación médica solamente - no es consejo médico.' Sé cálida y humana. Máximo 120 palabras." :
+              "You are Daysi, a healthcare navigator. You MUST start EVERY response with exactly: 'Hi, I'm your healthcare navigator, and I'm here to help guide you to the right resources and support.' Then respond conversationally and empathetically about the resources provided. Always include: 'Please remember, this is medical guidance only - not medical advice.' Be warm and human-like. Maximum 120 words."
           },
           {
             role: "user", 
-            content: responsePrompt
+            content: `You MUST start your response with exactly: "Hi, I'm your healthcare navigator, and I'm here to help guide you to the right resources and support."
+
+User's request: "${message}"
+Resources found: ${resultsList}
+
+Respond with empathy and guidance about these resources. Always end with: "Please remember, this is medical guidance only - not medical advice." Maximum 120 words.`
           }
         ]
       });
@@ -1260,6 +1265,7 @@ Please respond with JSON in this format:
       if (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY)) {
         const url = process.env.SUPABASE_URL;
         const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+        if (!key) return;
         const supabase = createClient(url, key, { auth: { persistSession: false } });
         const { data, error } = await supabase.from('users').select('count').limit(1);
         services.supabase_reachable = !error;
