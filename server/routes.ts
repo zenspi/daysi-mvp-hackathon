@@ -688,13 +688,29 @@ Please respond with JSON in this format:
 
   // Smart Conversational AI Endpoint
   askRouter.post("/", asyncHandler(async (req: Request, res: Response) => {
-    console.log('[ASK] Conversational AI request - length:', req.body.message?.length, 'chars, lang:', req.body.lang);
+    const correlationId = Math.random().toString(36).substring(7);
+    console.log(`[ASK:${correlationId}] Conversational AI request - length:`, req.body.message?.length, 'chars, lang:', req.body.lang);
     
     try {
       const { message, lang, user, location, pulseConsent } = req.body;
       
+      // Enhanced validation
       if (!message || typeof message !== 'string') {
         return res.status(400).json({ success: false, error: 'Message is required' });
+      }
+      
+      const trimmedMessage = message.trim();
+      if (trimmedMessage.length === 0) {
+        return res.status(400).json({ success: false, error: 'Message cannot be empty' });
+      }
+      
+      if (trimmedMessage.length > 2000) {
+        return res.status(400).json({ success: false, error: 'Message too long (max 2000 characters)' });
+      }
+      
+      // Validate language if provided
+      if (lang && typeof lang !== 'string') {
+        return res.status(400).json({ success: false, error: 'Invalid language parameter' });
       }
       
       const url = process.env.SUPABASE_URL;
@@ -738,7 +754,12 @@ Please respond with JSON in this format:
       
       const openai = getOpenAIClient();
       if (!openai) {
-        return res.status(503).json({ success: false, error: 'OPENAI_KEY_MISSING' });
+        console.log(`[ASK:${correlationId}] OpenAI client not available`);
+        return res.status(503).json({ 
+          success: false, 
+          error: 'OPENAI_KEY_MISSING',
+          details: 'AI features temporarily unavailable' 
+        });
       }
       
       // HOTFIX: Support lang:'auto' and use same detection as voice interface

@@ -33,8 +33,9 @@ export default function Voice() {
   const [hasAudioSupport] = useState(() => !!navigator.mediaDevices?.getUserMedia);
   const [microphonePermission, setMicrophonePermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
   
-  // Audio playback for voice responses
-  const audioContextRef = useRef<AudioContext | null>(null);
+  // Separate audio contexts for playback and capture
+  const playbackCtxRef = useRef<AudioContext | null>(null);
+  const captureRef = useRef<{ audioContext: AudioContext, processor: ScriptProcessorNode, source: MediaStreamAudioSourceNode } | null>(null);
   
 
   // Refs
@@ -44,14 +45,14 @@ export default function Voice() {
   const cachedStreamRef = useRef<MediaStream | null>(null);
 
 
-  // Initialize audio context for playback
+  // Initialize audio context for playback only
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      playbackCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     return () => {
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
+      if (playbackCtxRef.current) {
+        playbackCtxRef.current.close();
       }
     };
   }, []);
@@ -138,22 +139,6 @@ export default function Voice() {
             return;
           }
           
-          if (data.type === 'response.audio_transcript.done') {
-            setCurrentTranscript('');
-            setVoiceStatus('idle');
-            setIsRecording(false);
-            
-            const assistantMessage: Message = {
-              id: Date.now().toString(),
-              content: data.transcript || 'Response received',
-              type: 'assistant',
-              timestamp: new Date(),
-              language
-            };
-            setMessages(prev => [...prev, assistantMessage]);
-            return;
-          }
-          
           if (data.type === 'input_audio_buffer.speech_started') {
             setVoiceStatus('listening');
             return;
@@ -209,7 +194,7 @@ export default function Voice() {
 
   // Play audio buffer from server (PCM16 24kHz)
   const playAudioBuffer = useCallback(async (buffer: ArrayBuffer) => {
-    if (!audioContextRef.current) return;
+    if (!playbackCtxRef.current) return;
     
     try {
       // Convert PCM16 24kHz to AudioBuffer
@@ -222,13 +207,13 @@ export default function Voice() {
       }
       
       // Create audio buffer (24kHz mono)
-      const audioBuffer = audioContextRef.current.createBuffer(1, float32Data.length, 24000);
+      const audioBuffer = playbackCtxRef.current.createBuffer(1, float32Data.length, 24000);
       audioBuffer.getChannelData(0).set(float32Data);
       
       // Play audio
-      const source = audioContextRef.current.createBufferSource();
+      const source = playbackCtxRef.current.createBufferSource();
       source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
+      source.connect(playbackCtxRef.current.destination);
       source.start();
       
     } catch (error) {
@@ -313,10 +298,11 @@ export default function Voice() {
         };
 
         source.connect(processor);
-        processor.connect(audioContext.destination);
+        // REMOVED: Do not connect to destination to prevent audio feedback
+        // processor.connect(audioContext.destination);
         
         // Store references for cleanup
-        audioContextRef.current = { audioContext, processor, source };
+        captureRef.current = { audioContext, processor, source };
         
       } catch (error) {
         console.error('[VOICE] AudioWorklet creation failed:', error);
@@ -345,8 +331,8 @@ export default function Voice() {
 
   // Stop voice session
   const stopVoiceSession = useCallback(() => {
-    if (audioContextRef.current) {
-      const { audioContext, processor, source } = audioContextRef.current;
+    if (captureRef.current) {
+      const { audioContext, processor, source } = captureRef.current;
       
       // Clean up AudioContext and nodes
       try {
@@ -357,7 +343,7 @@ export default function Voice() {
         console.error('[VOICE] Cleanup error:', error);
       }
       
-      audioContextRef.current = null;
+      captureRef.current = null;
     }
     
     // Don't stop the cached stream - keep it for reuse
