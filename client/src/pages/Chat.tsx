@@ -338,39 +338,43 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto">
-      {/* Header */}
+      {/* Simplified Chat Header */}
       <div className="p-4 border-b bg-white dark:bg-gray-900">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="chat-title">
-              {t('chat.title')}
-            </h1>
-            <p className="text-sm text-muted-foreground" data-testid="chat-subtitle">
-              {t('chat.subtitle')}
-            </p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <Bot className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold" data-testid="chat-title">
+                Daysi
+              </h1>
+              <p className="text-xs text-muted-foreground" data-testid="chat-subtitle">
+                Healthcare Navigator • Online
+              </p>
+            </div>
           </div>
           
-          {/* Language selector */}
-          <Select value={language} onValueChange={setLanguage}>
-            <SelectTrigger className="w-[140px]" data-testid="language-selector">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="en">English</SelectItem>
-              <SelectItem value="es">Español</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        
-        {/* Options */}
-        <div className="flex items-center gap-4 flex-wrap text-sm">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={requestLocation}
-            disabled={useLocation}
-            data-testid="button-location"
-          >
+          {/* Compact Controls */}
+          <div className="flex items-center gap-2">
+            <Select value={language} onValueChange={setLanguage}>
+              <SelectTrigger className="w-16 h-8 text-xs" data-testid="language-selector">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">🇺🇸</SelectItem>
+                <SelectItem value="es">🇪🇸</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={requestLocation}
+              disabled={useLocation}
+              className="h-8 px-2"
+              data-testid="button-location"
+            >
             <MapPin className="h-4 w-4 mr-1" />
             {useLocation ? '✓ Location' : t('voice.useLocation')}
           </Button>
@@ -383,17 +387,22 @@ export default function Chat() {
         <ScrollArea className="h-full">
           <div className="p-4 space-y-4">
             {messages.length === 0 && (
-              <div className="text-center py-12" data-testid="chat-empty-state">
-                <Bot className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-medium mb-2">{t('chat.title')}</h3>
-                <p className="text-muted-foreground text-sm mb-4">{t('chat.subtitle')}</p>
-                <div className="text-xs text-muted-foreground">
-                  <p className="mb-1">{t('chat.suggestions')}:</p>
-                  <ul className="list-disc text-left inline-block">
-                    <li>"I need a pediatrician in Brooklyn"</li>
-                    <li>"Necesito ayuda con comida en Queens"</li>
-                    <li>"I have chest pain, what should I do?"</li>
-                  </ul>
+              <div className="flex justify-start">
+                <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mr-4 max-w-[85%]" data-testid="chat-empty-state">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Bot className="h-4 w-4" />
+                    <span className="text-sm font-medium">Daysi</span>
+                    <span className="text-xs text-muted-foreground">{new Date().toLocaleTimeString()}</span>
+                  </div>
+                  <div className="text-sm space-y-2">
+                    <p>👋 Hi! I'm Daysi, your healthcare navigator. I'm here to help you find the right care and resources.</p>
+                    <p>Tell me what you need help with today:</p>
+                    <ul className="text-xs text-muted-foreground space-y-1 ml-4">
+                      <li>• "I need a pediatrician in Brooklyn"</li>
+                      <li>• "Necesito ayuda con comida en Queens"</li>
+                      <li>• "I have chest pain, what should I do?"</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             )}

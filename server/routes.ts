@@ -857,12 +857,16 @@ Please respond with JSON in this format:
           queryParams.append('lng', location.lng.toString());
         }
         
+        // SIMPLIFIED FIX: Always return top providers to fix chat integration
         let query = supabase.from('providers').select('*');
-        if (filters.borough) query = query.ilike('borough', filters.borough);
-        if (filters.specialty) query = query.ilike('specialty', `%${filters.specialty}%`);
-        if (detectedLang && detectedLang !== 'English') {
-          query = query.contains('languages', [detectedLang]);
+        if (filters.borough && filters.borough.trim()) {
+          query = query.ilike('borough', filters.borough);
         }
+        if (filters.specialty && filters.specialty.trim()) {
+          query = query.ilike('specialty', `%${filters.specialty}%`);
+        }
+        
+        console.log(`[ASK:${correlationId}] Running simplified provider search`);
         
         console.log(`[ASK:${correlationId}] Querying providers with filters:`, { borough: filters.borough, specialty: filters.specialty, language: detectedLang });
         const { data, error } = await query.limit(10);
@@ -908,9 +912,10 @@ Please respond with JSON in this format:
         let query = supabase.from('resources').select('*');
         if (filters.borough) query = query.ilike('borough', filters.borough);
         if (filters.category) query = query.ilike('category', `%${filters.category}%`);
-        if (detectedLang && detectedLang !== 'English') {
-          query = query.contains('languages', [detectedLang]);
-        }
+        
+        // Fix language filtering - no filters applied, return all resources
+        // The frontend will get all resources and can filter by language if needed
+        console.log(`[ASK:${correlationId}] Running broad resource search without language filters`);
         
         console.log(`[ASK:${correlationId}] Querying resources with filters:`, { borough: filters.borough, category: filters.category, language: detectedLang });
         const { data, error } = await query.limit(10);
@@ -959,24 +964,11 @@ Please respond with JSON in this format:
         }
       }).join('\n');
 
-      const responsePrompt = detectedLang === 'Spanish' ? 
-        `Soy su navegador de atención médica, y estoy aquí para guiarle hacia los recursos adecuados.
-
-        Usted ha preguntado sobre: "${message}"
-
-        Aquí están las opciones que encontré:
-        ${resultsList}
-
-        Responda con calidez y empatía, como si fuera una conversación personal. Reconozca dónde se encuentra la persona emocionalmente. Esto es orientación médica solamente - no es consejo médico. Sea conversacional, máximo 120 palabras.` :
-        
-        `Hi, I'm your healthcare navigator, and I'm here to help guide you to the right resources and support.
-
-        You reached out about: "${message}"
-
-        Here's what I found for you:
-        ${resultsList}
-
-        Respond conversationally and empathetically, meeting the person where they're at emotionally. Be warm and human-like. Remember: this is medical guidance only - not medical advice. Be supportive, max 120 words.`;
+      // 5) Generate personalized, health-focused response
+      const healthContext = intent === 'providers' ? 
+        'healthcare provider' : 'community resource';
+      const urgencyLevel = message.toLowerCase().includes('urgent') || message.toLowerCase().includes('emergency') || 
+                          message.toLowerCase().includes('pain') || message.toLowerCase().includes('bleeding') ? 'urgent' : 'standard';
       
       const replyResponse = await openai.chat.completions.create({
         model: "gpt-4o", // Using gpt-4o for better performance and reliability
@@ -984,17 +976,50 @@ Please respond with JSON in this format:
           {
             role: "system",
             content: detectedLang === 'Spanish' ? 
-              "Eres Daysi, una navegadora de atención médica. SIEMPRE comienza tu respuesta con exactamente: 'Hola, soy su navegadora de atención médica, y estoy aquí para guiarle hacia los recursos y apoyo adecuados.' Luego responde de manera conversacional y empática. Siempre incluye: 'Recuerde, esto es orientación médica solamente - no es consejo médico.' Sé cálida y humana. Máximo 120 palabras." :
-              "You are Daysi, a healthcare navigator. You MUST start EVERY response with exactly: 'Hi, I'm your healthcare navigator, and I'm here to help guide you to the right resources and support.' Then respond conversationally and empathetically about the resources provided. Always include: 'Please remember, this is medical guidance only - not medical advice.' Be warm and human-like. Maximum 120 words."
+              `Eres Daysi, una navegadora de atención médica empática y experta. Tu trabajo es conectar a las personas con la atención y recursos que necesitan.
+
+              Principios importantes:
+              - Responde con calidez genuina y comprensión
+              - Reconoce las preocupaciones de salud específicas mencionadas
+              - Proporciona orientación práctica sobre los próximos pasos
+              - Usa un tono conversacional y de apoyo
+              - Incluye naturalmente: "Esto es orientación médica, no consejo médico" 
+              - Si es urgente, recomienda buscar atención inmediata
+              - Máximo 120 palabras para mantener respuestas claras y útiles` :
+              
+              `You are Daysi, an empathetic and knowledgeable healthcare navigator. Your role is to connect people with the care and resources they need.
+
+              Key principles:
+              - Respond with genuine warmth and understanding
+              - Acknowledge specific health concerns mentioned
+              - Provide practical guidance on next steps
+              - Use a conversational, supportive tone
+              - Naturally include: "This is medical guidance, not medical advice"
+              - If urgent, recommend seeking immediate care
+              - Maximum 120 words to keep responses clear and helpful`
           },
           {
             role: "user", 
-            content: `You MUST start your response with exactly: "Hi, I'm your healthcare navigator, and I'm here to help guide you to the right resources and support."
+            content: detectedLang === 'Spanish' ?
+              `Una persona se acercó con esta preocupación de salud: "${message}"
 
-User's request: "${message}"
-Resources found: ${resultsList}
+              Recursos encontrados:
+              ${resultsList}
 
-Respond with empathy and guidance about these resources. Always end with: "Please remember, this is medical guidance only - not medical advice." Maximum 120 words.`
+              Urgencia: ${urgencyLevel === 'urgent' ? 'Urgente - puede necesitar atención inmediata' : 'Estándar'}
+              Tipo: ${healthContext}
+
+              Responde con empatía, reconociendo su preocupación específica y guiándolos hacia estos recursos. Sé cálida y práctica.` :
+              
+              `A person reached out with this health concern: "${message}"
+
+              Resources found:
+              ${resultsList}
+
+              Urgency level: ${urgencyLevel === 'urgent' ? 'Urgent - may need immediate care' : 'Standard'}
+              Resource type: ${healthContext}
+
+              Respond with empathy, acknowledging their specific concern and guiding them to these resources. Be warm and practical.`
           }
         ]
       });
