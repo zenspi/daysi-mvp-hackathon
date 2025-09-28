@@ -13,7 +13,8 @@ import {
   User,
   Plus,
   Clock,
-  Star
+  Star,
+  Phone
 } from 'lucide-react';
 import { useLocation } from 'wouter';
 
@@ -115,6 +116,49 @@ export default function Home() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Call Daysi Section - Prominent */}
+      <div className="px-6 mb-6">
+        <Card className="border-primary/20 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 dark:from-primary/10 dark:via-primary/20 dark:to-primary/10">
+          <CardContent className="pt-6 pb-6 text-center">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center">
+                <Phone className="h-6 w-6 text-primary" />
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Call Daysi Directly
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Speak with our bilingual AI assistant anytime
+                </p>
+              </div>
+
+              <div className="flex flex-col items-center space-y-3">
+                <div className="text-2xl font-bold text-primary tracking-wider" data-testid="daysi-phone-number">
+                  (866) 386-3095
+                </div>
+                
+                <a href="tel:+18663863095" className="w-full">
+                  <Button 
+                    size="lg" 
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+                    data-testid="button-call-daysi"
+                  >
+                    <Phone className="h-5 w-5 mr-2" />
+                    Call Daysi Now
+                  </Button>
+                </a>
+                
+                <p className="text-xs text-muted-foreground text-center max-w-xs">
+                  Available 24/7 • English & Spanish • Free consultation
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Emergency Notice - Subtle styling */}

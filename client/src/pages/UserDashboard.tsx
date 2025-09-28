@@ -20,7 +20,8 @@ import {
   Globe,
   Clock,
   CheckCircle,
-  XCircle
+  XCircle,
+  Phone
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { ProactiveSuggestions } from '@/components/proactive/ProactiveSuggestions';
@@ -186,6 +187,38 @@ export default function UserDashboard() {
           User Account
         </Badge>
       </div>
+
+      {/* Call Daysi - Prominent Section */}
+      <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/20" data-testid="card-call-daysi">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center">
+                <Phone className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Need Help Right Now?</h3>
+                <p className="text-sm text-muted-foreground">Call Daysi directly for immediate assistance</p>
+              </div>
+            </div>
+            <div className="flex flex-col items-end space-y-2">
+              <div className="text-lg font-bold text-primary" data-testid="dashboard-phone-number">
+                (866) 386-3095
+              </div>
+              <a href="tel:+18663863095">
+                <Button 
+                  size="sm" 
+                  className="bg-primary hover:bg-primary/90"
+                  data-testid="button-call-daysi-dashboard"
+                >
+                  <Phone className="h-4 w-4 mr-2" />
+                  Call Now
+                </Button>
+              </a>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Quick Actions Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

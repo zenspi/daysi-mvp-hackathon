@@ -571,9 +571,30 @@ export default function ProviderSearch() {
           <div className="text-center py-12" data-testid="no-results">
             <Stethoscope className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
             <h3 className="text-lg font-medium mb-2">{t('search.providers.noResults')}</h3>
-            <p className="text-muted-foreground text-sm mb-4">
+            <p className="text-muted-foreground text-sm mb-6">
               Try adjusting your search criteria or removing some filters
             </p>
+            
+            {/* Call Daysi Help Section */}
+            <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 mb-4 max-w-md mx-auto">
+              <div className="flex items-center justify-center mb-2">
+                <Phone className="h-5 w-5 text-primary mr-2" />
+                <span className="font-medium text-foreground">Need help finding a provider?</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Call Daysi for personalized provider recommendations
+              </p>
+              <div className="text-lg font-bold text-primary mb-2" data-testid="provider-search-phone">
+                (866) 386-3095
+              </div>
+              <a href="tel:+18663863095" className="w-full">
+                <Button size="sm" className="w-full bg-primary hover:bg-primary/90" data-testid="button-call-help">
+                  <Phone className="h-4 w-4 mr-2" />
+                  Call for Help
+                </Button>
+              </a>
+            </div>
+            
             <Button variant="outline" onClick={clearFilters} data-testid="button-clear-filters-no-results">
               Clear all filters
             </Button>
