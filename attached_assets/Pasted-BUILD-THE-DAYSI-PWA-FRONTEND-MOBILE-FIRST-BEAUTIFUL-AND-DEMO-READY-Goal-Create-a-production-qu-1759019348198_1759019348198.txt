@@ -1,0 +1,96 @@
+BUILD THE DAYSI PWA FRONTEND – MOBILE-FIRST, BEAUTIFUL, AND DEMO-READY
+
+Goal:
+Create a production-quality PWA UI (React + TS + Vite + shadcn/ui) that talks to our existing backend.
+Pages: Home, Voice Assistant, Text Chat, Provider Search, Resource Search, Login (email/phone OTP), Profile, Admin Overview, Provider Claim.
+Features: EN/ES i18n, geolocation consent, installable PWA, dark/light auto, graceful errors, optimistic UI.
+
+1) PROJECT WIRING
+- Ensure vite PWA support:
+  • public/manifest.webmanifest with app name “Ask Daysi”, short_name “Daysi”, theme_color #0EA5E9, background_color #ffffff, start_url “/”, display “standalone”, icons (192, 512).
+  • src/sw.ts simple service worker for offline shell + cache-first for /public assets.
+  • Register service worker in main.tsx (skip in dev).
+- Fonts + styling:
+  • Add system font stack with a clean, medical-grade feel. Keep shadcn/ui components (Button, Card, Sheet, Input, Select, Tabs, Alert, Badge).
+- Routing:
+  • Use wouter with routes:
+    / (Home)
+    /voice (Voice Assistant page using our existing realtime)
+    /chat (Text Assistant using /api/ask)
+    /search/providers
+    /search/resources
+    /login
+    /profile
+    /admin
+    /providers/claim
+- Global layout:
+  • Mobile header with app title + language chip (🇺🇸/🇪🇸) and “Install App” button (PWA install prompt).
+  • Bottom tab bar (fixed) with 5 icons: Home, Voice, Chat, Search, Profile.
+
+2) I18N + CULTURAL FLUENCY
+- Add /locales/en.json and /locales/es.json with keys for all UI strings. Provide respectful “usted” tone in es.json.
+- Simple i18n context that reads user.language from /api/users/:id when logged in, else from localStorage; default English. Tapping chip toggles languages and persists.
+- Microcopy: warm, direct, culturally fluent; avoid medical jargon. Buttons: “Get care now”, “Buscar ayuda”.
+
+3) GEOLOCATION CONSENT
+- First run: non-blocking prompt banner: “May we use your location to sort nearby care?” [Allow] [Not now]
+- If allowed, store lat/lng in user (PATCH /api/users/:id) or localStorage if not logged in. Use this in searches as query params.
+
+4) AUTH (BASIC OTP, NO PASSWORDS)
+- /login page:
+  • Tabs: Phone | Email input.
+  • “Send code” → POST /api/users (with phone or email). Backend creates/returns user and mock-OTP code (dev-friendly).
+  • For hackathon: accept any 6-digit code; store user in localStorage and show success. Show masked identifier in header profile menu.
+- /profile page:
+  • Edit name, language, borough/zip; Save (PATCH /api/users/:id).
+  • See consent toggles: “Share location”, “Receive SMS updates”.
+
+5) SEARCH PAGES
+- /search/providers:
+  • Filters: Borough (select), Specialty (input with suggestions), Language (EN/ES/zh/… simple select), Insurance (free text), “Use my location” toggle.
+  • Results list: card with name, practice_name, specialty, languages badges, phone (tap-to-call), distance mi/km, “Directions” (link to maps).
+  • Fetch GET /api/providers?borough=&specialty=&lang=&lat=&lng=
+- /search/resources: similar with category filter; GET /api/resources?category=&lang=&lat=&lng=
+
+6) ASSISTANT PAGES
+- /voice:
+  • Bring the existing realtime UI into a polished page: big mic button, live transcript pane, language chip (EN/ES with lock/reset you already implemented), “Use my location”.
+  • Cards for “Next steps” and “Nearby matches” that update when assistant returns structured provider/resource suggestions (read from your /api/ask response).
+- /chat:
+  • Minimal chat interface (user bubbles right, assistant left). Input supports EN/ES; language chip controls reply language.
+  • POST /api/ask with { message, lang, lat, lng, userId? }. Render suggestions the same way as /voice.
+
+7) ADMIN & PROVIDER CLAIM
+- /admin (no auth for demo):
+  • GET /api/admin/overview and render stats tiles: users, providers, resources, last 10 queries (if available), error rate.
+- /providers/claim:
+  • Input: provider id or search; show provider card. “Claim this profile” opens form (name, email, phone). POST to /api/providers/claim (create pending review; if route doesn’t exist, POST to /api/users with role:'provider' and store requested_provider_id in a “claims” table fallback). Show “We’ll verify you shortly.”
+  • For demo, allow an “Instant verify (demo)” button that flips verified on the provider.
+
+8) ERROR STATES + LOADING
+- Add skeleton loaders for lists, toasts for errors (network/offline).
+- Use TanStack Query for caching. Stale-while-revalidate UX.
+
+9) PLUMBING: API CLIENT HOOKS
+- src/lib/api.ts – fetch helpers with baseURL = window.location.origin.
+- src/hooks/useUser.ts, useProviders.ts, useResources.ts, useAsk.ts using TanStack Query.
+- Always pass lang, lat, lng when available.
+
+10) ACCEPTANCE CRITERIA (DEMO CHECKLIST)
+- PWA is installable (manifest + SW) and mobile-first.
+- Home offers big tiles: “Talk to Daysi”, “Type to Daysi”, “Find a doctor”, “Find community help”.
+- Voice page works (live transcript shows, language chip EN by default).
+- Chat page works; shows provider/resource cards suggested by /api/ask.
+- Provider search filters and distance sorting work (verify with seed).
+- Resource search works (verify with seed).
+- Login creates user via email/phone; profile page editable.
+- Admin overview renders counts from /api/admin/overview.
+- Provider claim page submits and shows confirmation (use fallback if exact route not present).
+- i18n toggle live-updates UI text; Spanish copy uses respectful tone.
+
+11) DELIVERABLES
+- List of files created/modified.
+- Commands or actions I should run to “install PWA” and test geo permission.
+- 3-minute demo script in README: start on Home → Voice → Provider matches → Chat → Search → Admin → Install PWA.
+
+Please implement now.
