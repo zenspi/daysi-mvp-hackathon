@@ -18,7 +18,12 @@ const app = express();
 app.use(express.json({ limit: config.BODY_PARSER_LIMIT }));
 
 // Static file serving from configured directory
-app.use(express.static(path.join(__dirname, "..", config.STATIC_DIR)));
+if (isDevelopment()) {
+  app.use(express.static(path.join(__dirname, "..", config.STATIC_DIR)));
+} else {
+  // In production, serve from dist/public
+  app.use(express.static(path.join(__dirname, config.STATIC_DIR)));
+}
 
 // Register API routes and CORS middleware
 const httpServer = await registerRoutes(app);
