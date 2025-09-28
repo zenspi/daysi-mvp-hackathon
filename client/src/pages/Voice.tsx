@@ -20,7 +20,7 @@ interface Message {
   audioUrl?: string;
 }
 
-type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'ready' | 'error';
 type VoiceStatus = 'idle' | 'listening' | 'processing';
 
 export default function Voice() {
@@ -151,6 +151,16 @@ export default function Voice() {
         connectionIdRef.current = data.connection_id;
         break;
         
+      case 'connection.ready':
+        console.log('[VOICE] Voice services ready');
+        connectionIdRef.current = data.connection_id;
+        setConnectionStatus('ready');
+        toast({
+          title: t('voice.voiceReady') || 'Voice Ready',
+          description: t('voice.voiceReadyDescription') || 'Voice services are now available for use',
+        });
+        break;
+        
       case 'transcription':
         setCurrentTranscript(data.transcript || '');
         break;
@@ -200,7 +210,7 @@ export default function Voice() {
   // Start voice recording
   const startVoiceSession = useCallback(async () => {
     if (!await initializeAudio()) return;
-    if (connectionStatus !== 'connected') {
+    if (connectionStatus !== 'ready') {
       connectWebSocket();
       return;
     }
@@ -491,7 +501,7 @@ export default function Voice() {
                   <Button
                     size="lg"
                     onClick={startVoiceSession}
-                    disabled={!hasAudioSupport || connectionStatus === 'connecting'}
+                    disabled={!hasAudioSupport || connectionStatus !== 'ready'}
                     className="bg-blue-600 hover:bg-blue-700"
                     data-testid="button-start-voice"
                   >
