@@ -114,7 +114,23 @@
     }
   },
   "common": {
-    "member_since": "Member since"
+    "member_since": "Member since",
+    "good_morning": "Good morning",
+    "good_afternoon": "Good afternoon",
+    "good_evening": "Good evening",
+    "your_area": "Your area",
+    "available": "Available",
+    "guidance": "Guidance",
+    "no_recent_activity": "No recent activity",
+    "start_by_talking": "Start by talking to Daysi or searching for providers",
+    "get_personalized_care": "Get Personalized Care",
+    "sign_in_benefits": "Sign in to save your preferences and get personalized recommendations",
+    "ai_powered": "AI-Powered",
+    "twenty_four_seven": "24/7",
+    "admin": "Admin",
+    "provider": "Provider",
+    "there": "there",
+    "new_york_default": "New York"
   },
   "admin": {
     "title": "Admin Dashboard",
