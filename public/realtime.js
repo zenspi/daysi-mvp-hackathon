@@ -152,9 +152,17 @@ class HealthcareVoiceAssistant {
                         const matches = recentDetections.filter(d => d.code === targetLang && d.conf >= 0.85);
                         
                         if (matches.length >= 3 && targetLang !== this.langState.replyLang) {
+                            const prevLang = this.langState.replyLang;
                             this.langState.replyLang = targetLang;
                             this.langState.lastSwitchAt = Date.now();
-                            console.log(`🌍 Auto-switched to ${targetLang} (hysteresis: ${matches.length}/4 matches, conf >= 0.85)`);
+                            
+                            // HOTFIX: Detailed language switch logging per requirement
+                            console.log('=== LANGUAGE SWITCH ===');
+                            console.log(`Previous: ${prevLang} → Next: ${targetLang}`);
+                            console.log(`Reason: Auto-detection (hysteresis: ${matches.length}/4 matches, conf >= 0.85)`);
+                            console.log(`Confidence window: [${this.langState.window.slice(-4).map(d => `${d.code}:${d.conf.toFixed(2)}`).join(', ')}]`);
+                            console.log('====================');
+                            
                             this.updateLanguageIndicator();
                         }
                     }
@@ -274,6 +282,9 @@ class HealthcareVoiceAssistant {
     
     async startVoiceSession() {
         try {
+            // HOTFIX: Session start logging (server-side logging added separately)
+            console.log('=== DAYSI VOICE SESSION START ===');
+            console.log(`Language: ${this.langState.replyLang} (locked: ${this.langState.locked})`);
             console.log('Starting voice session with WebRTC...');
             this.updateStatus('connecting', '🟡 Connecting to voice services...');
             
@@ -292,7 +303,14 @@ class HealthcareVoiceAssistant {
             
             // Step 2: Get ephemeral token
             console.log('Step 2: Getting ephemeral token...');
-            const response = await fetch('/api/voice/ephemeral', { method: 'POST' });
+            const response = await fetch('/api/voice/ephemeral', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lang: this.langState.replyLang,
+                    locked: this.langState.locked
+                })
+            });
             
             if (!response.ok) {
                 const errorData = await response.json();
@@ -948,9 +966,20 @@ class HealthcareVoiceAssistant {
 
     // HOTFIX: Language locking methods per requirement
     lockLanguage(lang) {
+        const prevLang = this.langState.replyLang;
         this.langState.replyLang = lang;
         this.langState.locked = true;
         this.langState.lastSwitchAt = Date.now();
+        
+        // HOTFIX: Log explicit language lock per requirement
+        if (prevLang !== lang) {
+            console.log('=== LANGUAGE SWITCH ===');
+            console.log(`Previous: ${prevLang} → Next: ${lang}`);
+            console.log('Reason: Manual lock (user clicked button)');
+            console.log(`Confidence window: Manual override`);
+            console.log('====================');
+        }
+        
         console.log(`🔒 Language locked to ${lang.toUpperCase()}`);
         this.updateLanguageIndicator();
         this.updateDebugBadge();
@@ -1001,7 +1030,14 @@ class HealthcareVoiceAssistant {
         console.log('🔄 Renewing WebRTC connection...');
         try {
             // Get fresh ephemeral token
-            const response = await fetch('/api/voice/ephemeral', { method: 'POST' });
+            const response = await fetch('/api/voice/ephemeral', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lang: this.langState.replyLang,
+                    locked: this.langState.locked
+                })
+            });
             if (!response.ok) {
                 throw new Error('Failed to get fresh token');
             }

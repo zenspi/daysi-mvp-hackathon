@@ -687,7 +687,7 @@ Please respond with JSON in this format:
 
   // Smart Conversational AI Endpoint
   askRouter.post("/", asyncHandler(async (req: Request, res: Response) => {
-    console.log('[ASK] Conversational AI request:', req.body);
+    console.log('[ASK] Conversational AI request - length:', req.body.message?.length, 'chars, lang:', req.body.lang);
     
     try {
       const { message, lang, user, location, pulseConsent } = req.body;
@@ -745,15 +745,27 @@ Please respond with JSON in this format:
       
       if (lang === 'auto' || !lang) {
         try {
-          // Use the same language detection endpoint as voice interface
-          const response = await fetch(`http://localhost:${process.env.PORT || 5000}/api/voice/detect-language?text=${encodeURIComponent(message)}`);
-          const data = await response.json();
-          
-          if (data.success && data.language) {
-            detectedLang = data.language.code === 'es' ? 'Spanish' : 'English';
-            console.log(`[ASK] Language detected: ${detectedLang} (confidence: ${data.language.confidence})`);
-          } else {
-            console.log('[ASK] Language detection failed, using fallback method');
+          // HOTFIX: Use direct language detection logic instead of HTTP call to avoid self-call issues
+          try {
+            const langResponse = await openai.chat.completions.create({
+              model: "gpt-4o-mini",
+              messages: [{
+                role: "user",
+                content: `Detect the language of this text and return confidence score in JSON format with fields "code" (en/es) and "conf" (0-1). Text: "${message}"`
+              }],
+              response_format: { type: "json_object" },
+              max_tokens: 50
+            });
+
+            const langResult = JSON.parse(langResponse.choices[0].message.content || '{}');
+            if (langResult.code && langResult.conf) {
+              detectedLang = langResult.code === 'es' ? 'Spanish' : 'English';
+              console.log(`[ASK] Language detected: ${detectedLang} (confidence: ${langResult.conf})`);
+            } else {
+              console.log('[ASK] Language detection parsing failed, defaulting to English');
+            }
+          } catch (langError: any) {
+            console.log('[ASK] Language detection failed:', langError?.message || 'Unknown error');
             // Fallback to original method
             const langDetectPrompt = `Detect the language of this message and respond with just the language name in English: "${message}"`;
             const langResponse = await openai.chat.completions.create({
@@ -1050,6 +1062,14 @@ Please respond with JSON in this format:
       if (!process.env.OPENAI_API_KEY) {
         return res.status(502).json({ error: 'missing OPENAI_API_KEY' });
       }
+
+      // HOTFIX: Server-side session start logging with masked OpenAI key
+      const { lang = 'en', locked = true } = req.body;
+      console.log('=== DAYSI VOICE SESSION START (SERVER) ===');
+      console.log(`Language: ${lang} (locked: ${locked})`);
+      console.log(`OpenAI API Key: sk-...${process.env.OPENAI_API_KEY.slice(-4)}`);
+      console.log(`Session requested at: ${new Date().toISOString()}`);
+      console.log('============================================');
 
       const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
         method: 'POST',
