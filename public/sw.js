@@ -51,23 +51,41 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // API calls - network first with cache fallback
+  // API calls - network first with limited caching for privacy/security
   if (url.pathname.startsWith('/api/')) {
+    // Only cache safe, public API endpoints - avoid caching user/health data
+    const safeCacheableEndpoints = [
+      '/api/health',
+      '/api/providers',
+      '/api/resources',
+      '/api/admin/overview'
+    ];
+    const shouldCache = safeCacheableEndpoints.some(endpoint => 
+      url.pathname.startsWith(endpoint)
+    );
+
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Clone response for caching
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone);
-          });
+          // Only cache public endpoints and respect cache headers
+          if (shouldCache && response.status === 200 && 
+              !response.headers.get('set-cookie') &&
+              !response.headers.get('cache-control')?.includes('no-cache')) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
           return response;
         })
         .catch(() => {
-          // Fallback to cache if network fails
-          return caches.match(request).then(response => 
-            response || new Response('Network error', { status: 408 })
-          );
+          // Fallback to cache only for cacheable endpoints
+          if (shouldCache) {
+            return caches.match(request).then(response => 
+              response || new Response('Network error', { status: 408 })
+            );
+          }
+          return new Response('Network error', { status: 408 });
         })
     );
     return;

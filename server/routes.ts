@@ -1172,8 +1172,8 @@ Please respond with JSON in this format:
   app.use("/api", apiRouter);
   app.use("/health", healthRouter); // Also mount health directly for k8s compatibility
 
-  // Add 404 handler (must be after all routes)
-  app.use("*", notFoundHandler);
+  // Add 404 handler for API routes only (must be after all API routes)
+  apiRouter.use("*", notFoundHandler);
 
   // Add error handling middleware (must be last)
   app.use(errorHandler);

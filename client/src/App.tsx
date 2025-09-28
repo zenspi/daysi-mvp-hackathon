@@ -3,15 +3,36 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Dashboard from "@/pages/dashboard";
+import MobileLayout from "@/components/layout/MobileLayout";
+
+// Import all pages
+import Home from "@/pages/Home";
+import Voice from "@/pages/Voice";
+import Chat from "@/pages/Chat";
+import ProviderSearch from "@/pages/ProviderSearch";
+import ResourceSearch from "@/pages/ResourceSearch";
+import Login from "@/pages/Login";
+import Profile from "@/pages/Profile";
+import Admin from "@/pages/Admin";
+import ProviderClaim from "@/pages/ProviderClaim";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route component={NotFound} />
-    </Switch>
+    <MobileLayout>
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/voice" component={Voice} />
+        <Route path="/chat" component={Chat} />
+        <Route path="/search/providers" component={ProviderSearch} />
+        <Route path="/search/resources" component={ResourceSearch} />
+        <Route path="/login" component={Login} />
+        <Route path="/profile" component={Profile} />
+        <Route path="/admin" component={Admin} />
+        <Route path="/providers/claim" component={ProviderClaim} />
+        <Route component={NotFound} />
+      </Switch>
+    </MobileLayout>
   );
 }
 
