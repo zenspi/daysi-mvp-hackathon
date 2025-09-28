@@ -101,39 +101,48 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
         {children}
       </main>
 
-      {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border">
-        <div className="grid grid-cols-5 py-2">
+      {/* Bottom Navigation - Enhanced with animations and better touch targets */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border/50 shadow-lg">
+        <div className="grid grid-cols-5 py-2 px-2">
           {navItems.map(({ path, icon: Icon, label }) => {
             const isActive = location === path;
             
             return (
               <Link key={path} href={path}>
                 <div 
-                  className={`flex flex-col items-center p-2 ${
+                  className={`flex flex-col items-center p-3 rounded-xl transition-all duration-200 transform active:scale-95 ${
                     isActive 
-                      ? 'text-sky-500' 
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'text-sky-500 bg-sky-50 dark:bg-sky-950/30 shadow-sm' 
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
                   }`}
                   data-testid={`nav-${label.toLowerCase()}`}
                 >
-                  <Icon className="w-4 h-4" />
-                  <span className="text-xs mt-1 text-center">{label}</span>
+                  <div className={`p-1 rounded-lg transition-colors ${isActive ? 'bg-sky-100 dark:bg-sky-900/50' : ''}`}>
+                    <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110' : ''}`} />
+                  </div>
+                  <span className={`text-xs mt-1 text-center font-medium transition-all ${
+                    isActive ? 'text-sky-600 dark:text-sky-400' : ''
+                  }`}>
+                    {label}
+                  </span>
+                  {isActive && (
+                    <div className="w-1 h-1 bg-sky-500 rounded-full mt-1 animate-pulse" />
+                  )}
                 </div>
               </Link>
             );
           })}
         </div>
         
-        {/* Profile moved to header for space */}
-        <div className="absolute top-2 right-2">
+        {/* Profile in header - Enhanced */}
+        <div className="absolute -top-12 right-4">
           <Link href="/profile">
-            <div className={`p-1 rounded-full ${
+            <div className={`p-3 rounded-full transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-md ${
               location === '/profile' 
-                ? 'text-sky-500' 
-                : 'text-muted-foreground hover:text-foreground'
+                ? 'text-sky-500 bg-sky-100 dark:bg-sky-900/50 border-2 border-sky-200 dark:border-sky-800' 
+                : 'text-muted-foreground bg-background/90 backdrop-blur-sm border hover:text-foreground hover:bg-accent'
             }`}>
-              <User className="w-4 h-4" />
+              <User className="w-5 h-5" />
             </div>
           </Link>
         </div>

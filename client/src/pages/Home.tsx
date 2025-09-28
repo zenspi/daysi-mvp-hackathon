@@ -129,40 +129,54 @@ export default function Home() {
         </Card>
       </div>
 
-      {/* Quick Actions */}
+      {/* Quick Actions - Enhanced */}
       <div className="px-6 mb-8">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-6">
           <h3 className="text-lg font-semibold text-foreground">
             {t('home.quickActions')}
           </h3>
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-xs bg-gradient-to-r from-sky-50 to-blue-50 dark:from-sky-950 dark:to-blue-950 border-sky-200 dark:border-sky-800">
             {t('buttons.getCareNow')}
           </Badge>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {quickActions.map((action) => (
+          {quickActions.map((action, index) => (
             <Card
               key={action.id}
-              className="cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
+              className="cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden border-0 bg-gradient-to-br from-white via-gray-50/50 to-white dark:from-gray-900 dark:via-gray-900/50 dark:to-gray-800 shadow-md"
               onClick={() => handleQuickAction(action.path)}
               data-testid={action.testId}
+              style={{
+                animationDelay: `${index * 150}ms`,
+                animation: 'fadeInUp 0.6s ease-out both'
+              }}
             >
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-3">
-                  <div className={`p-3 rounded-full ${action.color}`}>
-                    <action.icon className={`h-6 w-6 ${action.iconColor}`} />
+              {/* Background Gradient Overlay */}
+              <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-black/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              
+              <CardHeader className="pb-3 relative z-10">
+                <div className="flex items-center gap-4">
+                  <div className={`p-3 rounded-2xl ${action.color} transform group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shadow-lg group-hover:shadow-xl`}>
+                    <action.icon className={`h-7 w-7 ${action.iconColor}`} />
                   </div>
                   <div className="flex-1">
-                    <CardTitle className="text-base">{action.title}</CardTitle>
+                    <CardTitle className="text-base font-semibold group-hover:text-primary transition-colors duration-200">
+                      {action.title}
+                    </CardTitle>
                   </div>
+                  {/* Chevron indicator */}
+                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-sky-400 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                 </div>
               </CardHeader>
-              <CardContent className="pt-0">
-                <CardDescription className="text-sm leading-relaxed">
+              <CardContent className="pt-0 relative z-10">
+                <CardDescription className="text-sm leading-relaxed text-muted-foreground group-hover:text-foreground/80 transition-colors duration-200">
                   {action.description}
                 </CardDescription>
               </CardContent>
+              
+              {/* Ripple effect background */}
+              <div className="absolute inset-0 bg-gradient-to-r from-sky-400/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-all duration-500 transform scale-0 group-hover:scale-100 rounded-lg" />
             </Card>
           ))}
         </div>
