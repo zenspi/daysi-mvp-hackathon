@@ -949,23 +949,38 @@ Please respond with JSON in this format:
       }).join('\n');
 
       const responsePrompt = detectedLang === 'Spanish' ? 
-        `Usted ha preguntado sobre: "${message}"
+        `Soy su navegador de atención médica, y estoy aquí para guiarle hacia los recursos adecuados.
+
+        Usted ha preguntado sobre: "${message}"
 
         Aquí están las opciones que encontré:
         ${resultsList}
 
-        Responda en español formal (usted), tono cálido, máximo 120 palabras. 1 frase empática, luego las opciones. Ofrezca "Puedo enviarle los detalles por mensaje." Haga ≤1 pregunta aclaratoria si es necesario.` :
+        Responda con calidez y empatía, como si fuera una conversación personal. Reconozca dónde se encuentra la persona emocionalmente. Esto es orientación médica solamente - no es consejo médico. Sea conversacional, máximo 120 palabras.` :
         
-        `You asked about: "${message}"
+        `Hi, I'm your healthcare navigator, and I'm here to help guide you to the right resources and support.
 
-        Here are the options I found:
+        You reached out about: "${message}"
+
+        Here's what I found for you:
         ${resultsList}
 
-        Respond in English with empathy and warmth, max 120 words. 1 empathetic sentence, then present the options. Offer "I can text you the details." Ask ≤1 clarifying question if helpful.`;
+        Respond conversationally and empathetically, meeting the person where they're at emotionally. Be warm and human-like. Remember: this is medical guidance only - not medical advice. Be supportive, max 120 words.`;
       
       const replyResponse = await openai.chat.completions.create({
         model: "gpt-4o", // Using gpt-4o for better performance and reliability
-        messages: [{ role: "user", content: responsePrompt }]
+        messages: [
+          {
+            role: "system",
+            content: detectedLang === 'Spanish' ? 
+              "Eres Daysi, una navegadora de atención médica. SIEMPRE comienza tu respuesta con: 'Hola, soy su navegadora de atención médica, y estoy aquí para guiarle hacia los recursos y apoyo adecuados.' Responde de manera conversacional y empática. Siempre incluye: 'Recuerde, esto es orientación médica solamente - no es consejo médico.' Sé cálida y humana. Máximo 120 palabras." :
+              "You are Daysi, a healthcare navigator. Start EVERY response with exactly: 'Hi, I'm your healthcare navigator, and I'm here to help guide you to the right resources and support.' Then respond conversationally and empathetically. Always include: 'Please remember, this is medical guidance only - not medical advice.' Be warm and human-like. Maximum 120 words."
+          },
+          {
+            role: "user", 
+            content: responsePrompt
+          }
+        ]
       });
       
       const reply = replyResponse.choices[0].message.content || 'I apologize, but I had trouble processing your request. Please try again.';
@@ -1069,12 +1084,18 @@ Please respond with JSON in this format:
       
       const testResponse = await Promise.race([
         openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [{
-            role: "user",
-            content: `Respond briefly to this healthcare question: "${message}"`
-          }],
-          max_tokens: 100
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system", 
+              content: "You are a healthcare navigator named Daysi. Start EVERY response with exactly: 'Hi, I'm your healthcare navigator, and I'm here to help guide you to the right resources and support.' Then respond conversationally and empathetically. Always include: 'Please remember, this is medical guidance only - not medical advice.' Be warm and human-like. Maximum 120 words."
+            },
+            {
+              role: "user", 
+              content: message
+            }
+          ],
+          max_tokens: 150
         }),
         new Promise((_, reject) => 
           setTimeout(() => reject(new Error('OpenAI timeout')), 10000)
