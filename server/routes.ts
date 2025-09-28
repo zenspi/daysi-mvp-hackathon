@@ -1329,11 +1329,160 @@ Please respond with JSON in this format:
   // Environment variable validation and logging
   const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
   const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+  const twilioNumber = process.env.TWILIO_NUMBER;
   
   if (!twilioAccountSid || !twilioAuthToken) {
     console.warn('[TWILIO] WARNING: TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN not set in environment variables');
   } else {
     console.log('[TWILIO] Twilio credentials configured');
+  }
+
+  // Initialize Twilio client
+  let twilioClient: any = null;
+  if (twilioAccountSid && twilioAuthToken) {
+    try {
+      const twilio = require('twilio');
+      twilioClient = twilio(twilioAccountSid, twilioAuthToken);
+      console.log('[TWILIO] Client initialized successfully');
+    } catch (error) {
+      console.error('[TWILIO] Failed to initialize client:', error);
+    }
+  }
+
+  // Conversation state management (per-call)
+  interface ConversationState {
+    callSid: string;
+    language: 'en' | 'es';
+    lastResults: Array<{
+      id: string;
+      name: string;
+      practice_name?: string;
+      phone: string;
+      specialty?: string;
+      borough?: string;
+      languages?: string[];
+    }>;
+    step: 'greeting' | 'listening' | 'searching' | 'presenting' | 'calling';
+    userUtterance?: string;
+    intent?: {
+      language: 'en' | 'es';
+      need_type: 'provider' | 'resource' | 'advice';
+      specialty?: string;
+      borough_or_zip?: string;
+      urgency: 'emergency' | 'urgent' | 'routine';
+      call_now: boolean;
+    };
+  }
+
+  const conversationStore = new Map<string, ConversationState>();
+
+  // Helper functions
+  function detectLanguage(utterance: string): 'en' | 'es' {
+    const spanishWords = ['necesito', 'quiero', 'doctor', 'medico', 'ayuda', 'hola', 'gracias', 'hospital', 'emergencia', 'urgente'];
+    const englishWords = ['need', 'want', 'doctor', 'help', 'hello', 'thanks', 'hospital', 'emergency', 'urgent'];
+    
+    const utteranceLower = utterance.toLowerCase();
+    let spanishCount = 0;
+    let englishCount = 0;
+    
+    spanishWords.forEach(word => {
+      if (utteranceLower.includes(word)) spanishCount++;
+    });
+    englishWords.forEach(word => {
+      if (utteranceLower.includes(word)) englishCount++;
+    });
+    
+    return spanishCount > englishCount ? 'es' : 'en';
+  }
+
+  function sayInLanguage(text: string, language: 'en' | 'es'): string {
+    const voice = language === 'es' ? 'Polly.Lupe' : 'Polly.Joanna';
+    const langCode = language === 'es' ? 'es-MX' : 'en-US';
+    return `<Say voice="${voice}" language="${langCode}">${text}</Say>`;
+  }
+
+  async function askLLMForIntent(utterance: string, language: 'en' | 'es'): Promise<any> {
+    try {
+      const systemPrompt = `You are a healthcare assistant. Analyze the user's request and return ONLY valid JSON with these fields:
+{
+  "language": "en" or "es",
+  "need_type": "provider" or "resource" or "advice",
+  "specialty": string or null (e.g., "pediatrics", "cardiology", "primary care"),
+  "borough_or_zip": string or null,
+  "urgency": "emergency" or "urgent" or "routine",
+  "call_now": boolean
+}
+
+If emergency mentioned, set urgency to "emergency". If user asks to call/connect, set call_now to true.`;
+
+      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: utterance }
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.1
+        })
+      });
+
+      const result = await openaiResponse.json();
+      return JSON.parse(result.choices[0].message.content);
+    } catch (error) {
+      console.error('[TWILIO] LLM intent error:', error);
+      return {
+        language,
+        need_type: 'provider',
+        specialty: null,
+        borough_or_zip: null,
+        urgency: 'routine',
+        call_now: false
+      };
+    }
+  }
+
+  async function searchProviders(filters: {
+    specialty?: string;
+    language?: string;
+    borough_or_zip?: string;
+    limit?: number;
+  }): Promise<any[]> {
+    try {
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+      
+      if (!url || !key) {
+        throw new Error('Supabase configuration missing');
+      }
+      
+      const supabase = createClient(url, key, { auth: { persistSession: false } });
+      let query = supabase.from('providers').select('*');
+      
+      // Apply filters
+      if (filters.specialty) {
+        query = query.ilike('specialty', `%${filters.specialty}%`);
+      }
+      if (filters.language && filters.language === 'es') {
+        query = query.contains('languages', ['Spanish']);
+      }
+      if (filters.borough_or_zip) {
+        query = query.or(`borough.ilike.%${filters.borough_or_zip}%,zip.ilike.%${filters.borough_or_zip}%`);
+      }
+      
+      const { data, error } = await query.limit(filters.limit || 3);
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('[TWILIO] Provider search error:', error);
+      return [];
+    }
   }
 
   // Health Check endpoint
@@ -1345,28 +1494,38 @@ Please respond with JSON in this format:
     });
   }));
 
-  // Voice webhook for incoming calls
+  // Voice webhook for incoming calls - Start conversation
   twilioRouter.post("/voice", asyncHandler(async (req: Request, res: Response) => {
     try {
       const { CallSid, From, To } = req.body;
       
       // Log call details
-      console.log('[TWILIO] Voice call received:', {
+      console.log('[TWILIO] Voice call started:', {
         callSid: CallSid,
         from: From,
         to: To,
         timestamp: new Date().toISOString()
       });
       
-      // Create TwiML response with natural US voice (Polly.Joanna)
+      // Initialize conversation state
+      conversationStore.set(CallSid, {
+        callSid: CallSid,
+        language: 'en', // Start with English, will auto-detect
+        lastResults: [],
+        step: 'greeting'
+      });
+      
+      // Create TwiML response with greeting and speech gathering
       const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say voice="Polly.Joanna" language="en-US">Hello! You've reached Ask Daysi at 8 6 6, 3 8 6, 3 0 9 5 - your healthcare companion.</Say>
     <Pause length="1"/>
-    <Say voice="Polly.Joanna" language="en-US">I can help you find healthcare providers, social services, and answer health questions. How can I assist you today?</Say>
-    <Pause length="2"/>
-    <Say voice="Polly.Joanna" language="en-US">You can also visit our website for instant help at daysi dash MVP dash jose 316 dot replit dot app. Thank you for calling!</Say>
-    <Hangup/>
+    <Say voice="Polly.Joanna" language="en-US">I can help you find healthcare providers and answer health questions. Tell me what you need.</Say>
+    <Gather input="speech" action="/twilio/voice/handle" method="POST" language="en-US" timeout="5" speechTimeout="2">
+        <Say voice="Polly.Joanna" language="en-US">Go ahead, I'm listening.</Say>
+    </Gather>
+    <Say voice="Polly.Joanna" language="en-US">Sorry, I didn't catch that. Let me try again.</Say>
+    <Redirect>/twilio/voice</Redirect>
 </Response>`;
 
       res.set('Content-Type', 'text/xml');
@@ -1377,6 +1536,228 @@ Please respond with JSON in this format:
       const errorResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say voice="Polly.Joanna" language="en-US">Sorry, we're experiencing technical difficulties. Please try again later.</Say>
+    <Hangup/>
+</Response>`;
+      
+      res.set('Content-Type', 'text/xml');
+      res.send(errorResponse);
+    }
+  }));
+
+  // Main conversation handler - Process each turn
+  twilioRouter.post("/voice/handle", asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const { CallSid, SpeechResult, Digits } = req.body;
+      const utterance = SpeechResult || Digits || '';
+      
+      console.log('[TWILIO] Processing utterance:', { callSid: CallSid, utterance });
+      
+      // Get conversation state
+      let conversation = conversationStore.get(CallSid);
+      if (!conversation) {
+        // Reinitialize if state lost
+        conversation = {
+          callSid: CallSid,
+          language: 'en',
+          lastResults: [],
+          step: 'listening'
+        };
+        conversationStore.set(CallSid, conversation);
+      }
+      
+      // Detect language and update if needed
+      const detectedLang = detectLanguage(utterance);
+      if (detectedLang !== conversation.language) {
+        conversation.language = detectedLang;
+        console.log(`[TWILIO] Language switched to: ${detectedLang}`);
+      }
+      
+      // Handle emergency
+      if (utterance.toLowerCase().includes('emergency') || utterance.toLowerCase().includes('emergencia')) {
+        const emergencyText = conversation.language === 'es' ? 
+          'Si esto es una emergencia, cuelgue y marque 9-1-1 inmediatamente.' :
+          'If this is an emergency, hang up and dial 9-1-1 immediately.';
+        
+        const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    ${sayInLanguage(emergencyText, conversation.language)}
+    <Pause length="2"/>
+    ${sayInLanguage(conversation.language === 'es' ? '¿Cómo más puedo ayudarle?' : 'How else can I help you?', conversation.language)}
+    <Gather input="speech" action="/twilio/voice/handle" method="POST" language="${conversation.language === 'es' ? 'es-MX' : 'en-US'}" timeout="5" speechTimeout="2">
+    </Gather>
+    <Redirect>/twilio/voice</Redirect>
+</Response>`;
+        
+        res.set('Content-Type', 'text/xml');
+        return res.send(twimlResponse);
+      }
+      
+      // Check for language switching requests
+      if (utterance.toLowerCase().includes('spanish') || utterance.toLowerCase().includes('español')) {
+        conversation.language = 'es';
+        const switchText = 'Perfecto, continuemos en español. ¿Cómo puedo ayudarle?';
+        
+        const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    ${sayInLanguage(switchText, 'es')}
+    <Gather input="speech" action="/twilio/voice/handle" method="POST" language="es-MX" timeout="5" speechTimeout="2">
+    </Gather>
+    <Redirect>/twilio/voice</Redirect>
+</Response>`;
+        
+        res.set('Content-Type', 'text/xml');
+        return res.send(twimlResponse);
+      }
+      
+      if (utterance.toLowerCase().includes('english') || utterance.toLowerCase().includes('inglés')) {
+        conversation.language = 'en';
+        const switchText = 'Great, let\'s continue in English. How can I help you?';
+        
+        const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    ${sayInLanguage(switchText, 'en')}
+    <Gather input="speech" action="/twilio/voice/handle" method="POST" language="en-US" timeout="5" speechTimeout="2">
+    </Gather>
+    <Redirect>/twilio/voice</Redirect>
+</Response>`;
+        
+        res.set('Content-Type', 'text/xml');
+        return res.send(twimlResponse);
+      }
+      
+      // Check if user is selecting a provider from previous results
+      if (conversation.lastResults.length > 0 && (
+        utterance.toLowerCase().includes('call') || 
+        utterance.toLowerCase().includes('first') || 
+        utterance.toLowerCase().includes('one') ||
+        utterance.toLowerCase().includes('llame') ||
+        utterance.toLowerCase().includes('primero') ||
+        utterance.toLowerCase().includes('uno') ||
+        /\b(1|2|3)\b/.test(utterance)
+      )) {
+        let selectedIndex = 0;
+        if (utterance.includes('2') || utterance.toLowerCase().includes('second') || utterance.toLowerCase().includes('segundo')) {
+          selectedIndex = 1;
+        } else if (utterance.includes('3') || utterance.toLowerCase().includes('third') || utterance.toLowerCase().includes('tercero')) {
+          selectedIndex = 2;
+        }
+        
+        if (selectedIndex < conversation.lastResults.length) {
+          const selectedProvider = conversation.lastResults[selectedIndex];
+          
+          // Start 3-way call
+          const connectingText = conversation.language === 'es' ? 
+            'Conectándole ahora.' : 'Connecting you now.';
+          
+          const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    ${sayInLanguage(connectingText, conversation.language)}
+    <Dial>
+        <Conference beep="false" endConferenceOnExit="true">conf-${CallSid}</Conference>
+    </Dial>
+</Response>`;
+          
+          // Dial the provider into the conference
+          if (twilioClient && twilioNumber) {
+            try {
+              await twilioClient.calls.create({
+                to: selectedProvider.phone,
+                from: twilioNumber,
+                url: `${req.protocol}://${req.get('host')}/twilio/voice/join-conference?name=conf-${CallSid}&lang=${conversation.language}`
+              });
+              console.log(`[TWILIO] Dialing provider ${selectedProvider.name} at ${selectedProvider.phone}`);
+            } catch (error) {
+              console.error('[TWILIO] Failed to dial provider:', error);
+            }
+          }
+          
+          res.set('Content-Type', 'text/xml');
+          return res.send(twimlResponse);
+        }
+      }
+      
+      // Get intent from LLM
+      const intent = await askLLMForIntent(utterance, conversation.language);
+      conversation.intent = intent;
+      
+      // Search for providers
+      const providers = await searchProviders({
+        specialty: intent.specialty,
+        language: conversation.language,
+        borough_or_zip: intent.borough_or_zip,
+        limit: 3
+      });
+      
+      conversation.lastResults = providers;
+      
+      let responseText = '';
+      if (providers.length === 0) {
+        responseText = conversation.language === 'es' ? 
+          'Lo siento, no encontré proveedores que coincidan con su búsqueda. ¿Puede darme más detalles?' :
+          'Sorry, I couldn\'t find providers matching your search. Can you give me more details?';
+      } else {
+        const foundText = conversation.language === 'es' ? 'Encontré' : 'I found';
+        const providersText = providers.map((p, i) => 
+          `${i + 1}. ${p.name}${p.practice_name ? ` at ${p.practice_name}` : ''} in ${p.borough || 'the area'}`
+        ).join(', ');
+        const askText = conversation.language === 'es' ? 
+          '¿A cuál le gustaría que le llame?' : 
+          'Which one would you like me to call?';
+        
+        responseText = `${foundText} ${providers.length} options: ${providersText}. ${askText}`;
+      }
+      
+      const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    ${sayInLanguage(responseText, conversation.language)}
+    <Gather input="speech" action="/twilio/voice/handle" method="POST" language="${conversation.language === 'es' ? 'es-MX' : 'en-US'}" timeout="5" speechTimeout="2">
+    </Gather>
+    <Say voice="${conversation.language === 'es' ? 'Polly.Lupe' : 'Polly.Joanna'}" language="${conversation.language === 'es' ? 'es-MX' : 'en-US'}">Sorry, I didn't catch that.</Say>
+    <Redirect>/twilio/voice</Redirect>
+</Response>`;
+      
+      res.set('Content-Type', 'text/xml');
+      res.send(twimlResponse);
+    } catch (error: any) {
+      console.error('[TWILIO] Handle error:', error);
+      
+      const errorResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Joanna" language="en-US">I'm having trouble processing your request. Let me try again.</Say>
+    <Redirect>/twilio/voice</Redirect>
+</Response>`;
+      
+      res.set('Content-Type', 'text/xml');
+      res.send(errorResponse);
+    }
+  }));
+
+  // Conference join endpoint for providers
+  twilioRouter.post("/voice/join-conference", asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const { name, lang } = req.query;
+      const language = lang === 'es' ? 'es' : 'en';
+      
+      const introText = language === 'es' ? 
+        'Hola, tiene una llamada de Ask Daysi. Le voy a conectar con el paciente.' :
+        'Hello, you have a call from Ask Daysi. I\'m connecting you with the patient.';
+      
+      const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    ${sayInLanguage(introText, language)}
+    <Dial>
+        <Conference beep="false">${name}</Conference>
+    </Dial>
+</Response>`;
+      
+      res.set('Content-Type', 'text/xml');
+      res.send(twimlResponse);
+    } catch (error: any) {
+      console.error('[TWILIO] Conference join error:', error);
+      
+      const errorResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Joanna">Sorry, there was an issue connecting the call.</Say>
     <Hangup/>
 </Response>`;
       
