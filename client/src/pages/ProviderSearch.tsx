@@ -203,8 +203,8 @@ export default function ProviderSearch() {
     }
     
     // Set user's borough if available
-    if (user?.borough) {
-      setFilters(prev => ({ ...prev, borough: user.borough }));
+    if (user?.borough && user.borough !== null) {
+      setFilters(prev => ({ ...prev, borough: user.borough as string }));
     }
     
     // Perform initial search

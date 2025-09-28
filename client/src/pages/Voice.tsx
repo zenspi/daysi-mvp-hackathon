@@ -113,11 +113,24 @@ export default function Voice() {
             }
             
             if (data.type === 'error') {
-              console.error('[VOICE] Server error:', data.error);
-              if (data.error !== 'Voice services temporarily unavailable') {
+              console.error('[VOICE] Server error:', data.message || data.error);
+              const errorMessage = data.message || data.error;
+              
+              // Handle retryable errors differently
+              if (errorMessage?.includes('retry') || errorMessage?.includes('interrupted')) {
+                setConnectionStatus('connected'); // Not ready until server confirms
+                setVoiceStatus('idle');
+                setIsRecording(false);
+                
+                toast({
+                  title: 'Voice Connection Issue',
+                  description: errorMessage + ' Tap to retry.',
+                  variant: 'default' // Not destructive for retryable errors
+                });
+              } else if (errorMessage !== 'Voice services temporarily unavailable') {
                 toast({
                   title: 'Voice Error',
-                  description: data.error,
+                  description: errorMessage,
                   variant: 'destructive'
                 });
               }
@@ -488,6 +501,11 @@ export default function Voice() {
         wsRef.current.send(JSON.stringify({ type: 'start' }));
       }
       startVoiceSession();
+    } else if (connectionStatus === 'connected' && wsRef.current?.readyState === WebSocket.OPEN) {
+      // Connected but not ready - attempt to reinitialize OpenAI connection
+      console.log('[VOICE] Sending reinit request to server...');
+      wsRef.current.send(JSON.stringify({ type: 'reinit' }));
+      setConnectionStatus('connecting'); // Show connecting state
     } else if (!pendingStartRef.current) {
       // User tapped early - connect and mark for auto-start
       pendingStartRef.current = true;

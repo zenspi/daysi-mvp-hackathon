@@ -91,6 +91,13 @@ export function registerRealtime(app: Express, server: Server) {
         return;
       }
       
+      // Add exponential backoff delay for retries
+      if (connection.initializationAttempts > 1) {
+        const delayMs = Math.min(1000 * Math.pow(2, connection.initializationAttempts - 2), 5000);
+        console.log(`[REALTIME] Waiting ${delayMs}ms before retry attempt ${connection.initializationAttempts} for ${connectionId}`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+      
       connection.isInitializing = true;
       
       try {
@@ -180,10 +187,38 @@ export function registerRealtime(app: Express, server: Server) {
 
         openaiWS.on('close', (code, reason) => {
           console.log(`[REALTIME] OpenAI connection closed for ${connectionId}: ${code} ${reason}`);
-          browserWS.send(JSON.stringify({ 
-            type: 'error', 
-            message: 'OpenAI connection closed' 
-          }));
+          console.log(`[REALTIME] Close code analysis: ${
+            code === 1000 ? 'Normal closure' :
+            code === 1001 ? 'Going away' :
+            code === 1002 ? 'Protocol error' :
+            code === 1003 ? 'Unsupported data' :
+            code === 1005 ? 'No status code (abnormal)' :
+            code === 1006 ? 'Abnormal closure' :
+            code === 1007 ? 'Invalid frame payload data' :
+            code === 1008 ? 'Policy violation' :
+            code === 1009 ? 'Message too big' :
+            code === 1010 ? 'Mandatory extension' :
+            code === 1011 ? 'Internal server error' :
+            code === 1015 ? 'TLS handshake' :
+            'Unknown close code'
+          }`);
+          
+          // Don't immediately close browser connection - allow retry
+          if (code !== 1000) {
+            console.log(`[REALTIME] OpenAI connection failed, marking for retry for ${connectionId}`);
+            connection.openaiWS = null;
+            connection.isInitializing = false;
+            
+            browserWS.send(JSON.stringify({ 
+              type: 'error', 
+              message: 'Voice connection interrupted. Tap again to retry.' 
+            }));
+          } else {
+            browserWS.send(JSON.stringify({ 
+              type: 'error', 
+              message: 'OpenAI connection closed normally' 
+            }));
+          }
         });
 
         openaiWS.on('error', (error) => {
@@ -243,17 +278,17 @@ export function registerRealtime(app: Express, server: Server) {
     // Handle browser messages
     browserWS.on('message', async (data) => {
       try {
-        if (!connection.openaiWS || connection.openaiWS.readyState !== WebSocket.OPEN) {
-          console.log(`[REALTIME] OpenAI connection not available for ${connectionId}`);
-          browserWS.send(JSON.stringify({ 
-            type: 'error', 
-            message: 'Voice services temporarily unavailable' 
-          }));
-          return;
-        }
-
         if (data instanceof Buffer) {
-          // Binary audio data from browser
+          // Binary audio data from browser - requires OpenAI connection
+          if (!connection.openaiWS || connection.openaiWS.readyState !== WebSocket.OPEN) {
+            console.log(`[REALTIME] OpenAI connection not available for audio data from ${connectionId}`);
+            browserWS.send(JSON.stringify({ 
+              type: 'error', 
+              message: 'Voice services temporarily unavailable' 
+            }));
+            return;
+          }
+          
           // Wrap in input_audio_buffer.append frame for OpenAI
           const audioFrame = {
             type: 'input_audio_buffer.append',
@@ -264,7 +299,7 @@ export function registerRealtime(app: Express, server: Server) {
           // Let server VAD handle response triggering automatically
           // Don't commit/create per chunk - it causes fragmented responses
         } else {
-          // JSON message from browser
+          // JSON message from browser - parse first to handle special messages
           let message;
           try {
             message = JSON.parse(data.toString());
@@ -273,27 +308,42 @@ export function registerRealtime(app: Express, server: Server) {
             return;
           }
 
-          // Handle special browser-specific messages
-          if (message.type === 'start') {
-            console.log(`[REALTIME] Start message received for ${connectionId}`);
-            // Initialize OpenAI connection if not already done
+          // Handle special browser-specific messages that don't require OpenAI connection
+          if (message.type === 'start' || message.type === 'reinit') {
+            console.log(`[REALTIME] ${message.type} message received for ${connectionId}`);
+            // Initialize OpenAI connection if not already done or if reinit requested
             if (!connection.openaiWS && !connection.isInitializing) {
-              console.log(`[REALTIME] Initializing OpenAI connection for ${connectionId}`);
+              console.log(`[REALTIME] (Re)initializing OpenAI connection for ${connectionId}`);
               await initializeOpenAI();
+            } else if (connection.isInitializing) {
+              console.log(`[REALTIME] OpenAI initialization already in progress for ${connectionId}`);
+            } else {
+              console.log(`[REALTIME] OpenAI connection already established for ${connectionId}`);
+              // Send ready signal since connection exists
+              browserWS.send(JSON.stringify({
+                type: 'connection.ready',
+                connection_id: connectionId
+              }));
             }
-            return; // Don't forward start message to OpenAI
+            return; // Don't forward start/reinit message to OpenAI
+          }
+
+          // All other JSON messages require OpenAI connection
+          if (!connection.openaiWS || connection.openaiWS.readyState !== WebSocket.OPEN) {
+            console.log(`[REALTIME] OpenAI connection not available for message from ${connectionId}`);
+            browserWS.send(JSON.stringify({ 
+              type: 'error', 
+              message: 'Voice services temporarily unavailable' 
+            }));
+            return;
           }
 
           if (message.type === 'session.update') {
             console.log(`[REALTIME] Forwarding session update for ${connectionId}`);
           }
 
-          // Forward to OpenAI only if connected
-          if (connection.openaiWS && connection.openaiWS.readyState === WebSocket.OPEN) {
-            connection.openaiWS.send(JSON.stringify(message));
-          } else {
-            console.log(`[REALTIME] OpenAI not connected, cannot forward message for ${connectionId}`);
-          }
+          // Forward to OpenAI
+          connection.openaiWS.send(JSON.stringify(message));
         }
       } catch (error) {
         console.error(`[REALTIME] Error processing browser message for ${connectionId}:`, error);
