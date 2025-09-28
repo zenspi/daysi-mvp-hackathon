@@ -1,8 +1,8 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
-import { Card, CardProps } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 
-interface EnhancedCardProps extends CardProps {
+interface EnhancedCardProps extends React.HTMLAttributes<HTMLDivElement> {
   hover?: boolean
   glow?: boolean
   gradient?: boolean
