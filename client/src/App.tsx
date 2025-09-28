@@ -16,8 +16,12 @@ import ResourceSearch from "@/pages/ResourceSearch";
 import Login from "@/pages/Login";
 import Profile from "@/pages/Profile";
 import Admin from "@/pages/Admin";
+import UserDashboard from "@/pages/UserDashboard";
+import ProviderDashboard from "@/pages/ProviderDashboard";
 import ProviderClaim from "@/pages/ProviderClaim";
 import NotFound from "@/pages/not-found";
+import RoleBasedRoute from "@/components/RoleBasedRoute";
+import DashboardRoute from "@/components/DashboardRoute";
 
 function Router() {
   return (
@@ -30,7 +34,22 @@ function Router() {
         <Route path="/search/resources" component={ResourceSearch} />
         <Route path="/login" component={Login} />
         <Route path="/profile" component={Profile} />
-        <Route path="/admin" component={Admin} />
+        <Route path="/dashboard" component={DashboardRoute} />
+        <Route path="/dashboard/user" component={() => (
+          <RoleBasedRoute allowedRoles={['user']}>
+            <UserDashboard />
+          </RoleBasedRoute>
+        )} />
+        <Route path="/dashboard/provider" component={() => (
+          <RoleBasedRoute allowedRoles={['provider']}>
+            <ProviderDashboard />
+          </RoleBasedRoute>
+        )} />
+        <Route path="/admin" component={() => (
+          <RoleBasedRoute allowedRoles={['admin']}>
+            <Admin />
+          </RoleBasedRoute>
+        )} />
         <Route path="/providers/claim" component={ProviderClaim} />
         <Route component={NotFound} />
       </Switch>
