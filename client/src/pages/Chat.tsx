@@ -206,15 +206,27 @@ export default function Chat() {
 
   // Handle scheduling appointment
   const handleScheduleAppointment = useCallback((provider: Provider) => {
-    // For now, open a booking URL or show scheduling options
-    // This could integrate with external scheduling services like Zocdoc
+    // Enhanced scheduling with better UX
+    const phoneNumber = provider.phone.replace(/\D/g, ''); // Clean phone number
     const bookingUrl = `https://www.zocdoc.com/search?filters=%5B%5D&insurances=%5B%5D&query=${encodeURIComponent(provider.name)}&address=${encodeURIComponent(provider.address)}`;
+    
+    // Open booking URL in new tab
     window.open(bookingUrl, '_blank');
     
     toast({
-      title: 'Opening Scheduling',
-      description: `Redirecting to book an appointment with ${provider.name}`,
+      title: '📅 Scheduling Options Opened',
+      description: `Book online with ${provider.name} or call ${provider.phone} directly`,
+      duration: 6000, // Show longer for important scheduling info
     });
+    
+    // Also provide direct call option as backup
+    setTimeout(() => {
+      toast({
+        title: '💡 Quick Tip',
+        description: `You can also call ${provider.name} directly at ${provider.phone} for faster booking`,
+        duration: 5000,
+      });
+    }, 2000);
   }, [toast]);
 
   // Handle input key press
