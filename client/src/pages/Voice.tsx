@@ -96,6 +96,7 @@ export default function Voice() {
         try {
           // Handle both string and binary data
           if (event.data instanceof ArrayBuffer) {
+            console.log(`[VOICE] Received audio data: ${event.data.byteLength} bytes`);
             // Handle binary audio data (PCM16 from OpenAI)
             playAudioBuffer(event.data);
             return;
@@ -194,9 +195,20 @@ export default function Voice() {
 
   // Play audio buffer from server (PCM16 24kHz)
   const playAudioBuffer = useCallback(async (buffer: ArrayBuffer) => {
-    if (!playbackCtxRef.current) return;
+    if (!playbackCtxRef.current) {
+      console.warn('[VOICE] No playback context available');
+      return;
+    }
     
     try {
+      // Ensure AudioContext is resumed (required for autoplay policy)
+      if (playbackCtxRef.current.state === 'suspended') {
+        console.log('[VOICE] Resuming suspended AudioContext');
+        await playbackCtxRef.current.resume();
+      }
+      
+      console.log(`[VOICE] Playing audio buffer: ${buffer.byteLength} bytes`);
+      
       // Convert PCM16 24kHz to AudioBuffer
       const pcm16Data = new Int16Array(buffer);
       const float32Data = new Float32Array(pcm16Data.length);
@@ -215,6 +227,8 @@ export default function Voice() {
       source.buffer = audioBuffer;
       source.connect(playbackCtxRef.current.destination);
       source.start();
+      
+      console.log('[VOICE] Audio playback started');
       
     } catch (error) {
       console.warn('[VOICE] Audio playback error:', error);
