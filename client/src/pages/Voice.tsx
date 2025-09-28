@@ -233,70 +233,66 @@ export default function Voice() {
     }
   }, [toast, language]);
 
-  // Play audio buffer from server (PCM16 24kHz)
+  // Play audio buffer from server (PCM16 24kHz) - SIMPLIFIED
   const playAudioBuffer = useCallback(async (buffer: ArrayBuffer) => {
     try {
-      // Initialize audio context on first use (user gesture required)
-      const audioContext = initializePlaybackAudio();
-      if (!audioContext) {
-        console.warn('[VOICE] No audio context available');
-        return;
-      }
+      console.log(`[VOICE] Received audio buffer: ${buffer.byteLength} bytes`);
       
-      // Force AudioContext resume (critical for autoplay policy)
-      if (audioContext.state === 'suspended') {
-        console.log('[VOICE] AudioContext suspended, attempting resume...');
-        await audioContext.resume();
-        console.log('[VOICE] AudioContext state after resume:', audioContext.state);
-      }
+      // Create a simple audio element approach for more reliable playback
+      const blob = new Blob([buffer], { type: 'audio/wav' });
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
       
-      if (audioContext.state !== 'running') {
-        console.warn('[VOICE] AudioContext not running:', audioContext.state);
-        // Try to resume again
-        try {
-          await audioContext.resume();
-        } catch (resumeError) {
-          console.error('[VOICE] Failed to resume AudioContext:', resumeError);
-          return;
-        }
-      }
-      
-      console.log(`[VOICE] Playing audio buffer: ${buffer.byteLength} bytes`);
-      console.log('[VOICE] AudioContext state:', audioContext.state);
-      
-      // Convert PCM16 24kHz to AudioBuffer
-      const pcm16Data = new Int16Array(buffer);
-      const float32Data = new Float32Array(pcm16Data.length);
-      
-      // Convert PCM16 to Float32 with better volume handling
-      for (let i = 0; i < pcm16Data.length; i++) {
-        float32Data[i] = Math.max(-1, Math.min(1, (pcm16Data[i] / 32768.0) * 1.5)); // Normalize and boost
-      }
-      
-      // Create audio buffer (24kHz mono)
-      const audioBuffer = audioContext.createBuffer(1, float32Data.length, 24000);
-      audioBuffer.getChannelData(0).set(float32Data);
-      
-      // Create gain node for volume control
-      const gainNode = audioContext.createGain();
-      gainNode.gain.value = 0.9; // 90% volume
-      
-      // Play audio with gain
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      // Add event listeners for debugging
-      source.onended = () => {
-        console.log('[VOICE] Audio chunk finished playing');
+      // Set volume and play
+      audio.volume = 0.8;
+      audio.onloadeddata = () => {
+        console.log('[VOICE] Audio loaded, duration:', audio.duration);
+      };
+      audio.onended = () => {
+        console.log('[VOICE] Audio playback finished');
+        URL.revokeObjectURL(audioUrl);
+      };
+      audio.onerror = (error) => {
+        console.error('[VOICE] Audio playback error:', error);
+        URL.revokeObjectURL(audioUrl);
       };
       
-      source.start();
-      console.log('[VOICE] Audio playback started successfully');
+      await audio.play();
+      console.log('[VOICE] Audio playback started');
       
     } catch (error) {
       console.error('[VOICE] Audio playback error:', error);
+      
+      // Fallback: Try with AudioContext if blob approach fails
+      try {
+        const audioContext = initializePlaybackAudio();
+        if (!audioContext) return;
+        
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
+        
+        // Simple PCM16 to Float32 conversion
+        const pcm16Data = new Int16Array(buffer);
+        const float32Data = new Float32Array(pcm16Data.length);
+        
+        for (let i = 0; i < pcm16Data.length; i++) {
+          float32Data[i] = pcm16Data[i] / 32768.0; // Simple normalization
+        }
+        
+        const audioBuffer = audioContext.createBuffer(1, float32Data.length, 24000);
+        audioBuffer.getChannelData(0).set(float32Data);
+        
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        source.start();
+        
+        console.log('[VOICE] Fallback AudioContext playback started');
+        
+      } catch (fallbackError) {
+        console.error('[VOICE] Fallback audio error:', fallbackError);
+      }
     }
   }, [initializePlaybackAudio]);
 
@@ -365,52 +361,74 @@ export default function Voice() {
     try {
       const stream = await getMicrophoneStream();
 
-      // Create AudioContext for PCM16 audio processing
+      // SIMPLIFIED: Create AudioContext with better settings
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
-        sampleRate: 24000 // 24kHz as required by OpenAI Realtime API
+        sampleRate: 48000 // Use standard sample rate, downsample on server
       });
 
       const source = audioContext.createMediaStreamSource(stream);
       
-      // Create audio worklet for PCM16 conversion
-      try {
-        // Create a simple ScriptProcessorNode for PCM16 conversion
-        const processor = audioContext.createScriptProcessor(2048, 1, 1);
-        
-        processor.onaudioprocess = (event) => {
-          if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+      // Use smaller buffer size to reduce latency and static
+      const processor = audioContext.createScriptProcessor(1024, 1, 1);
+      
+      processor.onaudioprocess = (event) => {
+        if (wsRef.current?.readyState !== WebSocket.OPEN) return;
 
-          const inputBuffer = event.inputBuffer;
-          const inputData = inputBuffer.getChannelData(0); // Mono audio
-          
-          // Convert Float32 audio to Int16 PCM
-          const pcm16Buffer = new Int16Array(inputData.length);
-          for (let i = 0; i < inputData.length; i++) {
-            const sample = Math.max(-1, Math.min(1, inputData[i]));
-            pcm16Buffer[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+        const inputBuffer = event.inputBuffer;
+        const inputData = inputBuffer.getChannelData(0);
+        
+        // Apply noise gate to reduce background noise
+        const threshold = 0.01; // Minimum volume threshold
+        let hasSignal = false;
+        
+        for (let i = 0; i < inputData.length; i++) {
+          if (Math.abs(inputData[i]) > threshold) {
+            hasSignal = true;
+            break;
           }
-          
-          // Send PCM16 data to WebSocket as base64 (much more efficient)
-          const uint8Array = new Uint8Array(pcm16Buffer.buffer);
-          const base64Audio = btoa(String.fromCharCode(...uint8Array));
-          const audioData = {
-            type: 'input_audio_buffer.append',
-            audio: base64Audio
-          };
-          wsRef.current.send(JSON.stringify(audioData));
-        };
+        }
+        
+        // Only send audio if there's actual signal
+        if (!hasSignal) return;
+        
+        // Simple PCM16 conversion without overprocessing
+        const pcm16Buffer = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          const sample = Math.max(-1, Math.min(1, inputData[i]));
+          pcm16Buffer[i] = Math.round(sample * 32767);
+        }
+        
+        // Send as base64
+        const uint8Array = new Uint8Array(pcm16Buffer.buffer);
+        const base64Audio = btoa(String.fromCharCode(...uint8Array));
+        wsRef.current.send(JSON.stringify({
+          type: 'input_audio_buffer.append',
+          audio: base64Audio
+        }));
+      };
 
-        source.connect(processor);
-        // REMOVED: Do not connect to destination to prevent audio feedback
-        // processor.connect(audioContext.destination);
-        
-        // Store references for cleanup
-        captureRef.current = { audioContext, processor, source };
-        
-      } catch (error) {
-        console.error('[VOICE] AudioWorklet creation failed:', error);
-        throw error;
-      }
+      source.connect(processor);
+      // Store references for cleanup
+      captureRef.current = { audioContext, processor, source };
+
+      setIsRecording(true);
+      setVoiceStatus('listening');
+
+      // Session is already configured by server - just start audio capture
+      console.log('[VOICE] Voice session started, audio capture active');
+
+    } catch (error) {
+      console.error('[VOICE] Microphone access failed:', error);
+      setVoiceStatus('idle');
+      setIsRecording(false);
+      
+      // Don't close WebSocket connection on mic failure
+      toast({
+        title: 'Microphone Access Required',
+        description: 'Please allow microphone access to use voice features',
+        variant: 'destructive'
+      });
+    }
 
       setIsRecording(true);
       setVoiceStatus('listening');

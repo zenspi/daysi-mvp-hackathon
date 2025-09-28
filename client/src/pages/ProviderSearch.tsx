@@ -7,6 +7,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Search, MapPin, Phone, Users, Clock, Stethoscope, Filter, X, ExternalLink, MessageCircle } from 'lucide-react';
 import { useI18n } from '@/contexts/I18nContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -181,37 +184,64 @@ export default function ProviderSearch() {
     });
   }, []);
 
-  // Handle appointment request through Ask Daysi
+  // Handle appointment request with inline form
+  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
+  const [appointmentForm, setAppointmentForm] = useState({
+    preferredDate: '',
+    preferredTime: '',
+    reason: '',
+    phone: '',
+    email: '',
+    urgency: 'routine'
+  });
+
   const handleRequestAppointment = useCallback((provider: Provider) => {
-    // Navigate to Ask Daysi with provider context
-    const providerContext = {
-      name: provider.name,
-      specialty: provider.specialty,
-      phone: provider.phone,
-      address: provider.address,
-      languages: provider.languages,
-      insurance: provider.insurance
-    };
-    
-    // Store provider context for Ask Daysi
-    sessionStorage.setItem('scheduleContext', JSON.stringify({
-      action: 'schedule_appointment',
-      provider: providerContext,
-      timestamp: new Date().toISOString()
-    }));
-    
-    // Show confirmation before navigation
-    toast({
-      title: '💬 Connecting with Daysi',
-      description: `I'll help you request an appointment with ${provider.name}`,
-      duration: 4000,
+    setSelectedProvider(provider);
+    // Clear form
+    setAppointmentForm({
+      preferredDate: '',
+      preferredTime: '',
+      reason: '',
+      phone: '',
+      email: '',
+      urgency: 'routine'
     });
+  }, []);
+
+  const submitAppointmentRequest = useCallback(async () => {
+    if (!selectedProvider) return;
     
-    // Navigate to Ask Daysi chat using wouter
-    setTimeout(() => {
-      navigate('/chat');
-    }, 500);
-  }, [toast]);
+    try {
+      // Submit appointment request to your backend
+      const response = await fetch('/api/appointments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          providerId: selectedProvider.id,
+          providerName: selectedProvider.name,
+          ...appointmentForm,
+          requestDate: new Date().toISOString()
+        })
+      });
+      
+      if (response.ok) {
+        toast({
+          title: '✅ Appointment Requested',
+          description: `Your appointment request has been sent to ${selectedProvider.name}. They will contact you within 24 hours.`,
+          duration: 5000,
+        });
+        setSelectedProvider(null);
+      } else {
+        throw new Error('Failed to submit request');
+      }
+    } catch (error) {
+      toast({
+        title: '❌ Request Failed',
+        description: 'Please try again or call the provider directly.',
+        variant: 'destructive'
+      });
+    }
+  }, [selectedProvider, appointmentForm, toast]);
 
   // Update filter
   const updateFilter = useCallback((key: keyof SearchFilters, value: string) => {
@@ -628,15 +658,115 @@ export default function ProviderSearch() {
                             {t('search.providers.callNow')}
                           </Button>
                           
-                          <Button 
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRequestAppointment(provider)}
-                            data-testid={`provider-schedule-${provider.id}`}
-                          >
-                            <MessageCircle className="h-3 w-3 mr-1" />
-                            Ask Daysi
-                          </Button>
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button 
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedProvider(provider)}
+                                data-testid={`provider-schedule-${provider.id}`}
+                              >
+                                <Clock className="h-3 w-3 mr-1" />
+                                Schedule
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-[500px]">
+                              <DialogHeader>
+                                <DialogTitle>Request Appointment with {provider.name}</DialogTitle>
+                              </DialogHeader>
+                              <div className="space-y-4 py-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <Label htmlFor="preferred-date">Preferred Date</Label>
+                                    <Input
+                                      id="preferred-date"
+                                      type="date"
+                                      value={appointmentForm.preferredDate}
+                                      onChange={(e) => setAppointmentForm(prev => ({ ...prev, preferredDate: e.target.value }))}
+                                      min={new Date().toISOString().split('T')[0]}
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label htmlFor="preferred-time">Preferred Time</Label>
+                                    <Select 
+                                      value={appointmentForm.preferredTime} 
+                                      onValueChange={(value) => setAppointmentForm(prev => ({ ...prev, preferredTime: value }))}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select time" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="morning">Morning (8AM-12PM)</SelectItem>
+                                        <SelectItem value="afternoon">Afternoon (12PM-5PM)</SelectItem>
+                                        <SelectItem value="evening">Evening (5PM-8PM)</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                                
+                                <div>
+                                  <Label htmlFor="urgency">Urgency</Label>
+                                  <Select 
+                                    value={appointmentForm.urgency} 
+                                    onValueChange={(value) => setAppointmentForm(prev => ({ ...prev, urgency: value }))}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="routine">Routine (within 2 weeks)</SelectItem>
+                                      <SelectItem value="urgent">Urgent (within 48 hours)</SelectItem>
+                                      <SelectItem value="emergency">Emergency (same day)</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                
+                                <div>
+                                  <Label htmlFor="reason">Reason for Visit</Label>
+                                  <Textarea
+                                    id="reason"
+                                    placeholder="Briefly describe your reason for the appointment..."
+                                    value={appointmentForm.reason}
+                                    onChange={(e) => setAppointmentForm(prev => ({ ...prev, reason: e.target.value }))}
+                                    rows={3}
+                                  />
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <Label htmlFor="contact-phone">Phone Number</Label>
+                                    <Input
+                                      id="contact-phone"
+                                      type="tel"
+                                      placeholder="(555) 123-4567"
+                                      value={appointmentForm.phone}
+                                      onChange={(e) => setAppointmentForm(prev => ({ ...prev, phone: e.target.value }))}
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label htmlFor="contact-email">Email</Label>
+                                    <Input
+                                      id="contact-email"
+                                      type="email"
+                                      placeholder="your@email.com"
+                                      value={appointmentForm.email}
+                                      onChange={(e) => setAppointmentForm(prev => ({ ...prev, email: e.target.value }))}
+                                    />
+                                  </div>
+                                </div>
+                                
+                                <div className="flex gap-2 pt-4">
+                                  <Button 
+                                    onClick={submitAppointmentRequest}
+                                    className="flex-1"
+                                    disabled={!appointmentForm.reason || !appointmentForm.phone}
+                                  >
+                                    Submit Request
+                                  </Button>
+                                </div>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
                           
                           <Button 
                             variant="outline"
