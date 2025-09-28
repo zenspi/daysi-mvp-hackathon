@@ -19,6 +19,7 @@ import {
   Globe
 } from 'lucide-react';
 import { Link } from 'wouter';
+import { ProactiveSuggestions } from '@/components/proactive/ProactiveSuggestions';
 
 interface UserActivity {
   type: 'voice' | 'chat' | 'search';
@@ -255,6 +256,9 @@ export default function UserDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Proactive AI Suggestions */}
+      <ProactiveSuggestions className="mb-6" maxSuggestions={2} />
 
       {/* Health Tips Card */}
       <Card data-testid="card-health-tips">
