@@ -1,0 +1,106 @@
+Goal: Make the Twilio phone number a natural, bilingual, conversational assistant. Use speech in/out only. Don’t send callers to any other channel. Use our Supabase directory. Bonus: 3-way call to provider.
+
+Do this end-to-end now:
+	1.	Server routes (Express)
+
+	•	Add/verify these routes in server/index.ts (or our main server file):
+	•	POST /twilio/voice — greet + gather first utterance
+	•	POST /twilio/voice/handle — handle each turn (LLM intent + Supabase search + reply + loop)
+	•	POST /twilio/voice/call-provider — kick off 3-way conference with selected provider
+
+	2.	Speech & voice
+
+	•	Use Twilio  for recognition.
+	•	Auto language detect from caller utterances (simple heuristic + LLM as tie-breaker).
+	•	Use Polly voices in <Say>:
+	•	English: Polly.Joanna
+	•	Spanish: Polly.Lupe
+	•	Keep replies ≤ 2 sentences, end with a question to keep it conversational.
+
+	3.	LLM intent → structured JSON
+
+	•	Call our OpenAI GPT-5 Responses API from the server (not the client) with a system prompt that outputs strict JSON:
+	•	language: "en"|"es"
+	•	need_type: "provider"|"resource"|"advice"
+	•	specialty: (e.g., "pediatrics", "cardiology", "primary care")
+	•	borough_or_zip: (string if mentioned; else null)
+	•	urgency: "emergency"|"urgent"|"routine"
+	•	call_now: boolean (true if the user asked to call)
+	•	If emergency → immediately say: “If this is an emergency, hang up and dial 911.” then offer nearest ER if they continue.
+
+	4.	Supabase query
+
+	•	Query the providers table with:
+filters by specialty (ILIKE), optional languages @> [lang], optional borough or zip, distance sort if lat/lng present.
+	•	Return top 3 with name, practice_name, phone, borough/zip, languages.
+
+	5.	Conversation state
+
+	•	Keep per-call state in a Map keyed by CallSid (or use a lightweight in-memory store):
+{ lang, lastResults: [ {name, phone, …} ], step }
+	•	The assistant should:
+	•	Read back top 3: “I found Dr. …, …, and … . Would you like me to call the first one?”
+	•	Accept natural answers: “yes”, “call number two”, “otra opción”, etc.
+	•	If user says “Spanish”, switch to es-MX ASR and Polly.Lupe on next turn; vice-versa for English.
+
+	6.	3-way calling (Conference)
+
+	•	When user says “call #1” (or similar):
+	•	Create a conference name (e.g., conf-${CallSid}).
+	•	Respond TwiML moving the current caller into <Dial><Conference> (beep=false, endConferenceOnExit=true).
+	•	From server (Twilio REST API) dial the provider phone into the same conference.
+	•	Speak: “Connecting you now.” in the correct language before moving them.
+	•	Add env secrets & use them:
+	•	TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+	•	TWILIO_NUMBER (E.164 format)
+
+	7.	Secrets in Replit
+
+	•	Ensure these exist (Replit → Secrets):
+	•	OPENAI_API_KEY
+	•	SUPABASE_URL
+	•	SUPABASE_SERVICE_ROLE (or anon key if that’s what our server uses)
+	•	TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_NUMBER
+
+	8.	Wire Twilio Console
+
+	•	A call comes in → Webhook → POST https://<published-replit>.replit.app/twilio/voice
+	•	Primary handler fails: leave blank or same URL.
+	•	Make sure the URL is the published .replit.app domain (not the dev preview).
+
+	9.	Error handling
+
+	•	If LLM or Supabase fails, apologize and continue:
+	•	EN: “I’m having trouble searching. Would you like me to try again, or leave a callback?”
+	•	ES: “Estoy teniendo problemas para buscar. ¿Quiere que lo intente de nuevo o dejar un número para devolverle la llamada?”
+	•	Always set res.type("text/xml") when returning TwiML.
+
+	10.	Acceptance tests (run now)
+
+	•	Call flow in English: “I need a pediatrician in Brooklyn.” → reads 3 options → “Call the first.” → you hear ringing → provider joins conference.
+	•	Call flow in Spanish: “Necesito un cardiólogo en Queens.” → answers in Spanish → reads 3 options → “Llame al número dos.”
+	•	“Switch to Spanish” mid-call → next prompt & ASR change to ES.
+	•	No dead-end redirects to web/chat—all in phone.
+
+Code to scaffold (TypeScript/Express):
+	•	Implement helper fns:
+	•	detectLanguage(utterance) → "en"|"es"
+	•	askLLM(utterance, lang) → structured JSON as above
+	•	searchProviders({ specialty, lang, borough_or_zip, lat, lng }) → top 3
+	•	say(vr, lang, text) → uses Polly voice per lang
+	•	enqueueConference(callSid, providerNumber) → Twilio REST call to dial provider into named conference
+	•	Make sure we call /api/ask brain if we already have it; otherwise call OpenAI Responses API directly.
+
+Deliverables:
+	•	Routes: /twilio/voice, /twilio/voice/handle, /twilio/voice/call-provider
+	•	Small ConversationStore (Map) for per-call state
+	•	Supabase query util
+	•	LLM util (OpenAI GPT-5, JSON mode)
+	•	Confirmed Twilio Console config + test calls
+
+Please implement now; keep the code concise and production-safe for the demo.
+
+⸻
+
+Notes you’ll likely need while testing
+	•	Conference snippet (user → conf, then dial provider):
