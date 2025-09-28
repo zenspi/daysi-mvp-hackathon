@@ -1341,110 +1341,101 @@ Please respond with JSON in this format:
   }));
 
   // Twilio Webhook Routes
-  // Add middleware to parse URL-encoded data for Twilio webhooks
+  // Add middleware to parse both URL-encoded and JSON data for Twilio webhooks
   twilioRouter.use(express.urlencoded({ extended: true }));
+  twilioRouter.use(express.json());
+
+  // Environment variable validation and logging
+  const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+  const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+  
+  if (!twilioAccountSid || !twilioAuthToken) {
+    console.warn('[TWILIO] WARNING: TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN not set in environment variables');
+  } else {
+    console.log('[TWILIO] Twilio credentials configured');
+  }
+
+  // Health Check endpoint
+  twilioRouter.get("/health", asyncHandler(async (req: Request, res: Response) => {
+    res.json({
+      ok: true,
+      time: new Date().toISOString(),
+      hasTwilio: !!(twilioAccountSid && twilioAuthToken)
+    });
+  }));
 
   // Voice webhook for incoming calls
   twilioRouter.post("/voice", asyncHandler(async (req: Request, res: Response) => {
     try {
-      console.log('[TWILIO] Voice webhook called:', req.body);
+      const { CallSid, From, To } = req.body;
       
-      // Create TwiML response for multilingual greeting
+      // Log call details
+      console.log('[TWILIO] Voice call received:', {
+        callSid: CallSid,
+        from: From,
+        to: To,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Create TwiML response with natural US voice (Polly.Joanna)
       const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Gather input="dtmf" numDigits="1" timeout="10" action="/twilio/voice/language">
-        <Say voice="alice" language="en-US">Thank you for calling Ask Daysi, your healthcare navigation assistant. Press 1 for English or 2 for Spanish. Gracias por llamar a Ask Daysi. Presiona 1 para inglés o 2 para español.</Say>
-    </Gather>
-    <Say voice="alice" language="en-US">We didn't receive your selection. Goodbye.</Say>
+    <Say voice="Polly.Joanna" language="en-US">Hello, this is Ask Daysi, your healthcare companion. How can I help you today?</Say>
+    <Pause length="2"/>
+    <Say voice="Polly.Joanna" language="en-US">For immediate assistance, please visit our website at daysi dash MVP dash jose 316 dot replit dot app. Thank you for calling!</Say>
     <Hangup/>
 </Response>`;
 
-      res.type('application/xml').send(twimlResponse);
+      res.set('Content-Type', 'text/xml');
+      res.send(twimlResponse);
     } catch (error: any) {
       console.error('[TWILIO] Voice webhook error:', error);
       
       const errorResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="alice" language="en-US">Sorry, we're experiencing technical difficulties. Please try again later.</Say>
+    <Say voice="Polly.Joanna" language="en-US">Sorry, we're experiencing technical difficulties. Please try again later.</Say>
     <Hangup/>
 </Response>`;
       
-      res.type('application/xml').send(errorResponse);
-    }
-  }));
-
-  // Language selection handler
-  twilioRouter.post("/voice/language", asyncHandler(async (req: Request, res: Response) => {
-    try {
-      const { Digits } = req.body;
-      console.log('[TWILIO] Language selection:', Digits);
-      
-      let language = 'en-US';
-      let voice = 'alice';
-      let greeting = '';
-      
-      if (Digits === '2') {
-        language = 'es-ES';
-        voice = 'alice';
-        greeting = 'Hola, soy Daysi, tu asistente de navegación de salud. Te conectaré con nuestro sistema de chat inteligente. Por favor visita nuestro sitio web para obtener ayuda inmediata con tus necesidades de salud.';
-      } else {
-        greeting = 'Hello, I\'m Daysi, your healthcare navigation assistant. I\'ll connect you to our intelligent chat system. Please visit our website for immediate help with your healthcare needs.';
-      }
-      
-      const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say voice="${voice}" language="${language}">${greeting}</Say>
-    <Pause length="1"/>
-    <Say voice="${voice}" language="${language}">Visit daysi dash mvp dash jose 316 dot replit dot app for 24/7 assistance. Thank you for calling Ask Daysi.</Say>
-    <Hangup/>
-</Response>`;
-
-      res.type('application/xml').send(twimlResponse);
-    } catch (error: any) {
-      console.error('[TWILIO] Language handler error:', error);
-      
-      const errorResponse = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say voice="alice" language="en-US">Sorry, we're experiencing technical difficulties. Please try again later.</Say>
-    <Hangup/>
-</Response>`;
-      
-      res.type('application/xml').send(errorResponse);
+      res.set('Content-Type', 'text/xml');
+      res.send(errorResponse);
     }
   }));
 
   // SMS webhook for incoming messages
   twilioRouter.post("/sms", asyncHandler(async (req: Request, res: Response) => {
     try {
-      const { From, Body, To } = req.body;
-      console.log('[TWILIO] SMS received from:', From, 'Message:', Body);
+      const { MessageSid, From, To, Body } = req.body;
       
-      // Auto-response with link to Ask Daysi
-      const responseMessage = `Hi! I'm Daysi, your healthcare assistant. For immediate help finding healthcare providers and resources, visit: https://daysi-mvp-jose316.replit.app/chat
-
-I can help you:
-• Find healthcare providers near you
-• Locate social services and resources  
-• Get AI-powered health guidance
-• Schedule appointments
-
-Visit our website for instant assistance!`;
+      // Log SMS details
+      console.log('[TWILIO] SMS received:', {
+        messageSid: MessageSid,
+        from: From,
+        to: To,
+        body: Body,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Echo back helpful message
+      const responseMessage = "Thanks for texting Ask Daysi. Tell me what you need and I'll find care near you.";
 
       const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Message>${responseMessage}</Message>
 </Response>`;
 
-      res.type('application/xml').send(twimlResponse);
+      res.set('Content-Type', 'text/xml');
+      res.send(twimlResponse);
     } catch (error: any) {
       console.error('[TWILIO] SMS webhook error:', error);
       
       const errorResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Message>Sorry, we're experiencing technical difficulties. Please visit https://daysi-mvp-jose316.replit.app for assistance.</Message>
+    <Message>Sorry, we're experiencing technical difficulties. Please try again later.</Message>
 </Response>`;
       
-      res.type('application/xml').send(errorResponse);
+      res.set('Content-Type', 'text/xml');
+      res.send(errorResponse);
     }
   }));
 
