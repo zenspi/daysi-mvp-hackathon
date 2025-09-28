@@ -14,6 +14,9 @@ import Chat from "@/pages/Chat";
 import ProviderSearch from "@/pages/ProviderSearch";
 import ResourceSearch from "@/pages/ResourceSearch";
 import Login from "@/pages/Login";
+import UserLogin from "@/pages/UserLogin";
+import ProviderLogin from "@/pages/ProviderLogin";
+import AdminLogin from "@/pages/AdminLogin";
 import Profile from "@/pages/Profile";
 import Admin from "@/pages/Admin";
 import UserDashboard from "@/pages/UserDashboard";
@@ -33,6 +36,9 @@ function Router() {
         <Route path="/search/providers" component={ProviderSearch} />
         <Route path="/search/resources" component={ResourceSearch} />
         <Route path="/login" component={Login} />
+        <Route path="/login/user" component={UserLogin} />
+        <Route path="/login/provider" component={ProviderLogin} />
+        <Route path="/login/admin" component={AdminLogin} />
         <Route path="/profile" component={Profile} />
         <Route path="/dashboard" component={DashboardRoute} />
         <Route path="/dashboard/user" component={() => (

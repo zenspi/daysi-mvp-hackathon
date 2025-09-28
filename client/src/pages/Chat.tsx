@@ -349,21 +349,27 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto">
-      {/* Simplified Chat Header */}
-      <div className="p-4 border-b bg-white dark:bg-gray-900">
+    <div className="flex flex-col h-full max-w-4xl mx-auto bg-gradient-to-b from-blue-50/30 to-transparent dark:from-blue-950/20">
+      {/* Enhanced Chat Header */}
+      <div className="p-4 border-b bg-white/90 dark:bg-gray-900/90 backdrop-blur-md sticky top-0 z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <Bot className="h-5 w-5 text-primary" />
+            <div className="relative">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                <Bot className="h-6 w-6 text-white" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white animate-pulse" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold" data-testid="chat-title">
+              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent" data-testid="chat-title">
                 Daysi
               </h1>
-              <p className="text-xs text-muted-foreground" data-testid="chat-subtitle">
-                Healthcare Navigator • Online
-              </p>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                <p className="text-sm text-muted-foreground" data-testid="chat-subtitle">
+                  Healthcare Navigator • Online
+                </p>
+              </div>
             </div>
           </div>
           
