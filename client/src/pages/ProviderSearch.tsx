@@ -11,6 +11,7 @@ import { Search, MapPin, Phone, Users, Clock, Stethoscope, Filter, X, ExternalLi
 import { useI18n } from '@/contexts/I18nContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { useLocation } from 'wouter';
 
 interface Provider {
   id: number;
@@ -39,6 +40,7 @@ export default function ProviderSearch() {
   const { t, language } = useI18n();
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   
   // State
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -192,14 +194,17 @@ export default function ProviderSearch() {
       timestamp: new Date().toISOString()
     }));
     
-    // Navigate to Ask Daysi chat
-    window.location.href = '/chat';
-    
+    // Show confirmation before navigation
     toast({
       title: '💬 Connecting with Daysi',
       description: `I'll help you request an appointment with ${provider.name}`,
       duration: 4000,
     });
+    
+    // Navigate to Ask Daysi chat using wouter
+    setTimeout(() => {
+      setLocation('/chat');
+    }, 500);
   }, [toast]);
 
   // Update filter
