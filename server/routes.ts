@@ -513,7 +513,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { symptoms, condition, location, language = 'English' } = req.body;
       
       if (!process.env.OPENAI_API_KEY) {
-        return res.status(500).json({ success: false, error: 'AI features not configured' });
+        return res.status(503).json({ success: false, error: 'OPENAI_KEY_MISSING' });
       }
 
       if (!symptoms && !condition) {
@@ -603,7 +603,7 @@ Please respond with JSON in this format:
       const { need, situation, location, language = 'English' } = req.body;
       
       if (!process.env.OPENAI_API_KEY) {
-        return res.status(500).json({ success: false, error: 'AI features not configured' });
+        return res.status(503).json({ success: false, error: 'OPENAI_KEY_MISSING' });
       }
 
       if (!need && !situation) {
@@ -738,7 +738,7 @@ Please respond with JSON in this format:
       
       const openai = getOpenAIClient();
       if (!openai) {
-        return res.status(500).json({ success: false, error: 'AI features not configured' });
+        return res.status(503).json({ success: false, error: 'OPENAI_KEY_MISSING' });
       }
       
       // HOTFIX: Support lang:'auto' and use same detection as voice interface
@@ -1003,7 +1003,7 @@ Please respond with JSON in this format:
           console.log('[ASK] Falling back to gpt-4o-mini');
           const openai = getOpenAIClient();
           if (!openai) {
-            return res.status(500).json({ success: false, error: 'AI features not configured' });
+            return res.status(503).json({ success: false, error: 'OPENAI_KEY_MISSING' });
           }
           const fallbackResponse = await openai.chat.completions.create({
             model: "gpt-4o-mini",
@@ -1101,6 +1101,74 @@ Please respond with JSON in this format:
         error: error.message 
       });
     }
+  }));
+
+  // Debug endpoint for testing /api/ask
+  askRouter.get("/debug", (req: Request, res: Response) => {
+    res.json({
+      endpoint: "/api/ask",
+      method: "POST",
+      description: "Test the chat API endpoint",
+      example_payload: {
+        message: "I need help finding a doctor for chest pain",
+        lang: "en",
+        user: { email: "user@example.com" },
+        location: null,
+        pulseConsent: false
+      },
+      instructions: "Send POST requests to /api/ask with the payload above"
+    });
+  });
+
+  // Environment Diagnostics Route
+  app.get("/api/diag", asyncHandler(async (req: Request, res: Response) => {
+    const env_status = {
+      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+      SUPABASE_URL: !!process.env.SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE: !!process.env.SUPABASE_SERVICE_ROLE,
+      SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
+      NODE_ENV: process.env.NODE_ENV || 'unknown'
+    };
+
+    const services = {
+      openai_reachable: false,
+      supabase_reachable: false
+    };
+
+    // Test OpenAI connectivity
+    try {
+      if (process.env.OPENAI_API_KEY) {
+        const response = await fetch('https://api.openai.com/v1/models', {
+          headers: {
+            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+          },
+          signal: AbortSignal.timeout(5000)
+        });
+        services.openai_reachable = response.ok;
+      }
+    } catch (error) {
+      services.openai_reachable = false;
+    }
+
+    // Test Supabase connectivity
+    try {
+      if (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY)) {
+        const url = process.env.SUPABASE_URL;
+        const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY;
+        const supabase = createClient(url, key, { auth: { persistSession: false } });
+        const { data, error } = await supabase.from('users').select('count').limit(1);
+        services.supabase_reachable = !error;
+      }
+    } catch (error) {
+      services.supabase_reachable = false;
+    }
+
+    res.json({
+      environment: env_status,
+      services,
+      timestamp: new Date().toISOString(),
+      status: 'ok'
+    });
   }));
 
   // Language Detection Route
