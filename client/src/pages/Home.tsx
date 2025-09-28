@@ -117,12 +117,12 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Emergency Notice */}
-      <div className="px-6 mb-6">
-        <Card className="border-orange-200 bg-orange-50 dark:bg-orange-950 dark:border-orange-800">
-          <CardContent className="flex items-center gap-3 pt-4">
-            <AlertTriangle className="h-5 w-5 text-orange-600 flex-shrink-0" />
-            <p className="text-sm text-orange-800 dark:text-orange-200" data-testid="emergency-notice">
+      {/* Emergency Notice - Subtle styling */}
+      <div className="px-6 mb-4">
+        <Card className="border-amber-100 bg-amber-50/60 dark:bg-amber-950/30 dark:border-amber-900/40">
+          <CardContent className="flex items-center gap-2 pt-3 pb-3">
+            <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+            <p className="text-xs text-amber-700 dark:text-amber-300" data-testid="emergency-notice">
               {t('home.emergencyNotice')}
             </p>
           </CardContent>
