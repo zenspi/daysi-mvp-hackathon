@@ -28,6 +28,16 @@ if (isDevelopment()) {
 // Register API routes and CORS middleware
 const httpServer = await registerRoutes(app);
 
+// Initialize and test database connection before starting server
+const dbInitialized = initializeDatabase();
+const dbConnected = dbInitialized ? await testConnection() : false;
+
+// Configure storage mode based on database connectivity
+setStorageMode(dbConnected);
+
+// Register Realtime WebSocket functionality BEFORE static file serving
+registerRealtime(app, httpServer);
+
 // Setup Vite development server integration OR serve static files
 // Force production mode to bypass HMR connection issues
 const forceProductionMode = true; // Set to true to completely bypass HMR
@@ -39,16 +49,6 @@ if (!forceProductionMode && isDevelopment()) {
   serveStatic(app);
   console.log("🚀 Running in static file mode - HMR bypassed for stability");
 }
-
-// Initialize and test database connection before starting server
-const dbInitialized = initializeDatabase();
-const dbConnected = dbInitialized ? await testConnection() : false;
-
-// Configure storage mode based on database connectivity
-setStorageMode(dbConnected);
-
-// Register Realtime WebSocket functionality
-registerRealtime(app, httpServer);
 
 // Start the server
 httpServer.listen(config.PORT, config.HOST, () => {

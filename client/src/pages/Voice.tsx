@@ -266,28 +266,8 @@ export default function Voice() {
       setIsRecording(true);
       setVoiceStatus('listening');
 
-      // Send session creation with audio modality
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        console.log('[VOICE] Sending session.update...');
-        wsRef.current.send(JSON.stringify({
-          event_id: `session_${Date.now()}`,
-          type: 'session.update',
-          session: {
-            modalities: ['text', 'audio'],
-            instructions: `You are Daysi, a helpful healthcare assistant. Keep responses brief and helpful.`,
-            voice: 'alloy',
-            input_audio_format: 'pcm16',
-            output_audio_format: 'pcm16',
-            input_audio_transcription: {
-              model: 'whisper-1'
-            },
-            turn_detection: {
-              type: 'server_vad'
-            }
-          }
-        }));
-        console.log('[VOICE] Session update sent');
-      }
+      // Session is already configured by server - just start audio capture
+      console.log('[VOICE] Voice session started, audio capture active');
 
     } catch (error) {
       console.error('[VOICE] Microphone access failed:', error);
